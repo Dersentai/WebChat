@@ -921,7 +921,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
         style={{
           marginTop: idx === 0 ? '8px' : '0',
-          backgroundColor: msg.username === displayName ? 'rgba(6, 78, 59, 0.9)' : 'rgba(34, 58, 86, 0.95)',
+          backgroundColor: msg.username === displayName ? 'rgba(6, 78, 59, 0.7)' : 'rgba(34, 58, 86, 0.7)',
           border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
           boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
         }}
