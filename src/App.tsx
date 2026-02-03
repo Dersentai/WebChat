@@ -36,6 +36,15 @@ export default function App() {
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [onlineCount, setOnlineCount] = useState(0)
+// --- Добавлено: карта последних активностей для определения онлайн/оффлайн (хак/эвристика) ---
+const [lastActiveMap, setLastActiveMap] = useState<Record<string, number>>({})
+const ONLINE_THRESHOLD_MS = 1000 * 60 * 2 // 2 минуты: если пользователь писал в течение 2 минут — считаем онлайн
+const isUserOnline = (username: string) => {
+  const t = lastActiveMap[username]
+  if (!t) return false
+  return Date.now() - t < ONLINE_THRESHOLD_MS
+}
+// --- конец добавления ---
   const [viewCount, setViewCount] = useState(0)
   const [settings, setSettings] = useState<Settings>({
     backgroundImage: null,
@@ -108,8 +117,17 @@ const markViewCounted = (): void => {
       })
       const data = await res.json()
       if (data.success) {
-        setMessages(data.messages)
-      }
+  setMessages(data.messages)
+  // --- Добавлено: обновляем карту lastActiveMap на основе timestamp сообщений ---
+  const _map: Record<string, number> = {}
+  data.messages.forEach((m: any) => {
+    if (!m || !m.username) return
+    const t = m.timestamp || Date.now()
+    _map[m.username] = Math.max(_map[m.username] || 0, t)
+  })
+  setLastActiveMap(prev => ({ ...prev, ..._map }))
+  // --- конец добавления ---
+}
     } catch (error) {
       console.error('Error fetching messages:', error)
     }
@@ -309,6 +327,8 @@ useEffect(() => {
       setPreviewText('')
       setReplyingTo(null)
       fetchMessages()
+setLastActiveMap(prev => ({ ...prev, [displayName]: Date.now() }))
+setLastActiveMap(prev => ({ ...prev, [displayName]: Date.now() }))
     } catch (error) {
       console.error('Error sending message with file:', error)
     }
@@ -918,17 +938,35 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     )}
     <div className="w-full flex justify-start items-start">
       <div
-        className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
-        style={{
-          marginTop: idx === 0 ? '8px' : '0',
-          backgroundColor: msg.username === displayName ? 'rgba(6, 78, 59, 0.7)' : 'rgba(34, 58, 86, 0.7)',
-          border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
-          boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
-        }}
-      >
-        <div className="text-xs font-medium mb-1" style={{ color: settings.iconColor }}>
-          {msg.username}
-        </div>
+  className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words relative"
+  style={{
+    marginTop: idx === 0 ? '8px' : '0',
+    backgroundColor: msg.username === displayName ? 'rgba(6, 78, 59, 0.9)' : 'rgba(34, 58, 86, 0.95)',
+    border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
+    boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
+  }}
+>
+  {/* Индикатор онлайн/оффлайн: круг в левом верхнем углу сообщения */}
+<span  
+  className="absolute"  
+  style={{  
+    width: '10px',  
+    height: '10px',  
+    borderRadius: '9999px',  
+    top: '8px',  
+    right: '8px',  
+    backgroundColor: isUserOnline(msg.username)
+      ? '#FF00FF40' // онлайн
+      : '#FFFF0000', // оффлайн
+    pointerEvents: 'none',  
+    animation: isUserOnline(msg.username) ? 'pulse 1.5s infinite' : 'none', // пульс только онлайн
+  }}  
+  aria-hidden="true"  
+/>
+  <div className="text-xs font-medium mb-1 pl-4" style={{ color: settings.iconColor }}>
+    {msg.username}
+  </div>
+
         {msg.replyTo && renderReplyPreview(msg.replyTo)}
         {renderMessageContent(msg)}
         <div className="text-xs text-gray-400 mt-1">
