@@ -133,6 +133,7 @@ const markViewCounted = (): void => {
       })
       const data = await res.json()
       if (data.success) {
+        console.log('[v0] Fetched messages sample:', data.messages.slice(-2))
         setMessages(data.messages)
       }
     } catch (error) {
@@ -262,6 +263,16 @@ useEffect(() => {
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
+      // Проверить, есть ли сохранённые цвета для этого пользователя
+      const savedColors = localStorage.getItem('chatUserColors')
+      if (savedColors) {
+        try {
+          const colors = JSON.parse(savedColors)
+          setUserColors(colors)
+          setTempNameColor(colors.nameColor)
+          setTempMsgBgColor(colors.msgBgColor)
+        } catch (e) {}
+      }
       // Показать меню выбора цвета только для зарегистрированных
       setShowColorMenu(true)
     } else {
@@ -383,6 +394,7 @@ useEffect(() => {
     }
 
     try {
+console.log('[v0] Sending message with colors:', { isRegisteredUser, nameColor: userColors.nameColor, msgBgColor: userColors.msgBgColor })
 const message: Message = {
   id: Date.now().toString(),
   username: displayName,
@@ -392,6 +404,7 @@ const message: Message = {
   nameColor: isRegisteredUser ? userColors.nameColor : null,
   msgBgColor: isRegisteredUser ? userColors.msgBgColor : null
   }
+console.log('[v0] Message object:', message)
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -455,9 +468,12 @@ const message: Message = {
 
 // Edit message (только для зарегистрированных пользователей)
   const handleEdit = () => {
+  console.log('[v0] handleEdit called, isRegisteredUser:', isRegisteredUser, 'selectedMessage:', selectedMessage)
   if (!isRegisteredUser) return
   const msg = messages.find(m => m.id === selectedMessage)
+  console.log('[v0] Found message:', msg, 'displayName:', displayName)
   if (msg && msg.username === displayName) {
+  console.log('[v0] Setting editing mode for message:', msg.id)
   setEditingMessageId(msg.id)
   setEditingText(msg.text)
   }
@@ -474,7 +490,7 @@ const message: Message = {
   }
   
   try {
-  await fetch(`${API_URL}/messages/edit`, {
+  const response = await fetch(`${API_URL}/messages/edit`, {
   method: 'POST',
   headers: {
   'Content-Type': 'application/json',
@@ -487,9 +503,19 @@ const message: Message = {
   })
   })
   
+  const result = await response.json()
+  
+  if (result.success) {
+  // Обновить локальное состояние сразу
+  setMessages(prev => prev.map(msg => 
+  msg.id === editingMessageId 
+  ? { ...msg, text: editingText.trim() }
+  : msg
+  ))
+  }
+  
   setEditingMessageId(null)
   setEditingText('')
-  fetchMessages()
   } catch (error) {
   console.error('Error editing message:', error)
   }
