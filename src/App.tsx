@@ -36,15 +36,6 @@ export default function App() {
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [onlineCount, setOnlineCount] = useState(0)
-// --- Добавлено: карта последних активностей для определения онлайн/оффлайн (хак/эвристика) ---
-const [lastActiveMap, setLastActiveMap] = useState<Record<string, number>>({})
-const ONLINE_THRESHOLD_MS = 1000 * 60 * 2 // 2 минуты: если пользователь писал в течение 2 минут — считаем онлайн
-const isUserOnline = (username: string) => {
-  const t = lastActiveMap[username]
-  if (!t) return false
-  return Date.now() - t < ONLINE_THRESHOLD_MS
-}
-// --- конец добавления ---
   const [viewCount, setViewCount] = useState(0)
   const [settings, setSettings] = useState<Settings>({
     backgroundImage: null,
@@ -117,17 +108,8 @@ const markViewCounted = (): void => {
       })
       const data = await res.json()
       if (data.success) {
-  setMessages(data.messages)
-  // --- Добавлено: обновляем карту lastActiveMap на основе timestamp сообщений ---
-  const _map: Record<string, number> = {}
-  data.messages.forEach((m: any) => {
-    if (!m || !m.username) return
-    const t = m.timestamp || Date.now()
-    _map[m.username] = Math.max(_map[m.username] || 0, t)
-  })
-  setLastActiveMap(prev => ({ ...prev, ..._map }))
-  // --- конец добавления ---
-}
+        setMessages(data.messages)
+      }
     } catch (error) {
       console.error('Error fetching messages:', error)
     }
@@ -154,8 +136,12 @@ const markViewCounted = (): void => {
   // Update presence and fetch stats
 const updatePresence = async () => {
   try {
-    const alreadyCounted = localStorage.getItem(VIEW_COUNTED_KEY) === 'true'
-    const isNewVisitForServer = !alreadyCounted && tryClaimView()
+    // Count a view only on the first presence update after the page loads.
+    // presenceInitialized.current будет false до первого вызова updatePresence.
+    // Это означает: при каждой новой загрузке страницы (или обновлении) первый вызов
+    // updatePresence отправит isNewVisit: true, а последующие (периодические)
+    // вызовы — false.
+    const isNewVisitForServer = !presenceInitialized.current
 
     const res = await fetch(`${API_URL}/presence`, {
       method: 'POST',
@@ -177,9 +163,8 @@ const updatePresence = async () => {
       hasVisited.current = true
       try { localStorage.setItem('chatHasVisited', 'true') } catch (e) {}
 
-      if (isNewVisitForServer) {
-        markViewCounted()
-      }
+      // Мы не ставим больше долгоживущий флаг в localStorage —
+      // нам нужно считать просмотр при каждой загрузке страницы.
     }
   } catch (error) {
     console.error('Error updating presence:', error)
@@ -200,7 +185,7 @@ useEffect(() => {
   const interval = setInterval(() => {
     fetchMessages()
     updatePresence()
-  }, 5000)
+  }, 10000)
 
   return () => clearInterval(interval)
 }, [])
@@ -327,8 +312,6 @@ useEffect(() => {
       setPreviewText('')
       setReplyingTo(null)
       fetchMessages()
-setLastActiveMap(prev => ({ ...prev, [displayName]: Date.now() }))
-setLastActiveMap(prev => ({ ...prev, [displayName]: Date.now() }))
     } catch (error) {
       console.error('Error sending message with file:', error)
     }
@@ -558,6 +541,18 @@ setLastActiveMap(prev => ({ ...prev, [displayName]: Date.now() }))
       console.error('Error applying theme:', error)
     }
   }
+
+// Конвертирует hex -> "rgba(r, g, b, a)"
+const hexToRgba = (hex: string | undefined | null, alpha = 0.7) => {
+  if (!hex || typeof hex !== 'string') return `rgba(34, 58, 86, ${alpha})` // запасной цвет
+  let h = hex.trim().replace(/^#/, '')
+  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return `rgba(34, 58, 86, ${alpha})`
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
 
   // Render message content
   const renderMessageContent = (msg: Message) => {
@@ -800,7 +795,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     )
   }
 
-  // Render reply preview
+// Render reply preview
   const renderReplyPreview = (replyToId: string) => {
     const replyMsg = messages.find(m => m.id === replyToId)
     if (!replyMsg) return null
@@ -811,7 +806,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         <div className="flex items-center gap-2 mb-1 p-2 bg-black/30 rounded border-l-2 border-blue-400">
           <img src={replyMsg.fileUrl} alt="Preview" className="w-10 h-10 object-cover rounded" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-blue-400">{replyMsg.username}</div>
+            <div className="text-xs" style={{ color: '#ebef00' }}>{replyMsg.username}</div>
             <div className="text-xs text-gray-400 truncate">{preview || 'Изображение'}</div>
           </div>
         </div>
@@ -823,7 +818,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         <div className="flex items-center gap-2 mb-1 p-2 bg-black/30 rounded border-l-2 border-blue-400">
           <div className="w-10 h-10 bg-gray-700 rounded flex items-center justify-center text-xs">🎥</div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-blue-400">{replyMsg.username}</div>
+            <div className="text-xs" style={{ color: '#ebef00' }}>{replyMsg.username}</div>
             <div className="text-xs text-gray-400 truncate">{preview || 'Видео'}</div>
           </div>
         </div>
@@ -835,7 +830,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         <div className="flex items-center gap-2 mb-1 p-2 bg-black/30 rounded border-l-2 border-blue-400">
           <div className="w-10 h-10 bg-gray-700 rounded flex items-center justify-center text-xs">🎵</div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-blue-400">{replyMsg.username}</div>
+            <div className="text-xs" style={{ color: '#ebef00' }}>{replyMsg.username}</div>
             <div className="text-xs text-gray-400 truncate">{preview || 'Аудио'}</div>
           </div>
         </div>
@@ -844,7 +839,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 
     return (
       <div className="mb-1 p-2 bg-black/30 rounded border-l-2 border-blue-400">
-        <div className="text-xs text-blue-400">{replyMsg.username}</div>
+        <div className="text-xs" style={{ color: '#ebef00' }}>{replyMsg.username}</div>
         <div className="text-xs text-gray-400 truncate">{preview || 'Файл'}</div>
       </div>
     )
@@ -904,78 +899,71 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </button>
       </div>
 
-      {/* Messages */}
+    {/* Messages */}
       <div className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2">
        {messages.map((msg, idx) => {
   const isSelected = selectedForDelete.has(msg.id)
+  const content = renderMessageContent(msg)
   return (
-  <div
-    key={msg.id}
-    className="relative"
-    onClick={(e) => {
-      if (deleteMode) {
-        e.stopPropagation()
-        toggleSelectMessage(msg.id)
-      }
-    }}
-    onMouseDown={(e) => handleMouseDown(msg.id, e)}
-    onMouseUp={handleMouseUp}
-    onTouchStart={(e) => handleTouchStart(msg.id, e)}
-    onTouchEnd={handleTouchEnd}
-  >
-    {deleteMode && (
-      <div className="absolute -left-8 top-2 z-10">
-        <input
-          type="checkbox"
-          checked={selectedForDelete.has(msg.id)}
-          onChange={(e) => {
-            e.stopPropagation();
-            toggleSelectMessage(msg.id);
+    <div
+      key={msg.id}
+      className="relative"
+      onClick={(e) => {
+        if (deleteMode) {
+          e.stopPropagation()
+          toggleSelectMessage(msg.id)
+        }
+      }}
+      onMouseDown={(e) => handleMouseDown(msg.id, e)}
+      onMouseUp={handleMouseUp}
+      onTouchStart={(e) => handleTouchStart(msg.id, e)}
+      onTouchEnd={handleTouchEnd}
+    >
+      {deleteMode && (
+        <div className="absolute -left-8 top-2 z-10">
+          <input
+            type="checkbox"
+            checked={selectedForDelete.has(msg.id)}
+            onChange={(e) => {
+              e.stopPropagation()
+              toggleSelectMessage(msg.id)
+            }}
+            className="w-4 h-4"
+          />
+        </div>
+      )}
+      <div className="w-full flex justify-start items-start">
+        <div
+          className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
+          style={{
+            marginTop: idx === 0 ? '8px' : '0',
+            backgroundColor: hexToRgba('#003a21', 0.8),
+            border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
+            boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
-          className="w-4 h-4"
-        />
-      </div>
-    )}
-    <div className="w-full flex justify-start items-start">
-      <div
-  className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words relative"
-  style={{
-    marginTop: idx === 0 ? '8px' : '0',
-    backgroundColor: msg.username === displayName ? 'rgba(6, 78, 59, 0.9)' : 'rgba(34, 58, 86, 0.95)',
-    border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
-    boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
-  }}
->
-  {/* Индикатор онлайн/оффлайн: круг в левом верхнем углу сообщения */}
-<span  
-  className="absolute"  
-  style={{  
-    width: '10px',  
-    height: '10px',  
-    borderRadius: '9999px',  
-    top: '8px',  
-    right: '8px',  
-    backgroundColor: isUserOnline(msg.username)
-      ? '#FF00FF40' // онлайн
-      : '#FFFF0000', // оффлайн
-    pointerEvents: 'none',  
-    animation: isUserOnline(msg.username) ? 'pulse 1.5s infinite' : 'none', // пульс только онлайн
-  }}  
-  aria-hidden="true"  
-/>
-  <div className="text-xs font-medium mb-1 pl-4" style={{ color: settings.iconColor }}>
-    {msg.username}
-  </div>
+        >
+          <div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
+            {msg.username}
+          </div>
 
-        {msg.replyTo && renderReplyPreview(msg.replyTo)}
-        {renderMessageContent(msg)}
-        <div className="text-xs text-gray-400 mt-1">
-          {new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+          {msg.replyTo && renderReplyPreview(msg.replyTo)}
+
+          {content ?? (msg.text ? <div className="break-words whitespace-pre-wrap">{msg.text}</div> : null)}
+
+          <div className="text-xs text-gray-400 mt-1">
+            {new Date(msg.timestamp).toLocaleString('ru-RU', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </div>
         </div>
       </div>
     </div>
-  </div>
-)})}
+  )
+})}
         <div ref={messagesEndRef} />
       </div>
 
@@ -1029,11 +1017,11 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Reply Bar */}
+{/* Reply Bar */}
       {replyingTo && (
         <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
           <div className="flex-1 text-sm text-gray-300">
-            Ответ на: <span className="text-blue-400">{replyingTo.username}</span>
+            Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
           </div>
           <button onClick={() => setReplyingTo(null)} className="p-1">
             <X size={16} className="text-gray-400" />
