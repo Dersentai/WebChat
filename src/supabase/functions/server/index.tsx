@@ -62,6 +62,43 @@ app.post('/make-server-98c5d13a/messages', async (c) => {
   }
 })
 
+// Edit message
+app.put('/make-server-98c5d13a/messages', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { id, text, username } = body
+    
+    if (!id || !text) {
+      return c.json({ success: false, error: 'Missing id or text' }, 400)
+    }
+    
+    // Get existing message
+    const existingMessage = await kv.get(`msg_${id}`)
+    if (!existingMessage) {
+      return c.json({ success: false, error: 'Message not found' }, 404)
+    }
+    
+    // Verify ownership by username (only if username provided)
+    if (username && existingMessage.username !== username) {
+      return c.json({ success: false, error: 'Not authorized to edit this message' }, 403)
+    }
+    
+    // Update message with edited flag
+    const updatedMessage = {
+      ...existingMessage,
+      text: text,
+      edited: true
+    }
+    
+    await kv.set(`msg_${id}`, updatedMessage)
+    
+    return c.json({ success: true, message: updatedMessage })
+  } catch (error) {
+    console.log('Error editing message:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
 // Delete messages
 app.post('/make-server-98c5d13a/messages/delete', async (c) => {
   try {

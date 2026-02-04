@@ -484,8 +484,15 @@ const handleReply = () => {
   setSelectedMessage(null)
   }
 
-  // Edit message - only for own messages
+  // Edit message - only for own messages and not for guests
   const handleEdit = () => {
+    // Guests cannot edit messages
+    if (displayName === 'гость') {
+      setShowContextMenu(false)
+      setSelectedMessage(null)
+      return
+    }
+    
     const msg = messages.find(m => m.id === selectedMessage)
     if (msg && msg.username === displayName) {
       setEditingMessage(msg)
@@ -496,37 +503,57 @@ const handleReply = () => {
   }
 
   // Save edited message
-  const saveEditedMessage = () => {
+  const saveEditedMessage = async () => {
     if (!editingMessage || !inputText.trim()) return
     
     const messageId = editingMessage.id
     const newText = inputText.trim()
+    const currentUsername = displayName
     
-    // Optimistically update local state first
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
-    ))
+    // Don't allow guests to edit
+    if (currentUsername === 'гость') {
+      setEditingMessage(null)
+      setInputText('')
+      return
+    }
     
-    // Clear editing state
+    // Clear editing state immediately
     setEditingMessage(null)
     setInputText('')
     setSpoilerOpen(false)
     
-    // Send to server with Authorization header
-    fetch(`${API_URL}/messages`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publicAnonKey}`
-      },
-      body: JSON.stringify({
-        id: messageId,
-        text: newText
+    // Optimistically update local state
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
+    ))
+    
+    try {
+      // Send to server with Authorization header and username for verification
+      const response = await fetch(`${API_URL}/messages`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`
+        },
+        body: JSON.stringify({
+          id: messageId,
+          text: newText,
+          username: currentUsername
+        })
       })
-    }).catch(err => {
+      
+      const data = await response.json()
+      
+      if (!data.success) {
+        console.error('Error editing message:', data.error)
+        // Revert on error by fetching fresh data
+        fetchMessages()
+      }
+    } catch (err) {
       console.error('Error editing message:', err)
-      fetchMessages() // Refresh only on error to get actual state
-    })
+      // Revert on error by fetching fresh data
+      fetchMessages()
+    }
   }
 
   // Cancel editing
@@ -1209,10 +1236,12 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
-          {/* Edit button - only show for own messages */}
+          {/* Edit button - only show for own messages and not for guests */}
           {(() => {
             const msg = messages.find(m => m.id === selectedMessage)
-            return msg && msg.username === displayName ? (
+            // Show edit only if: user is logged in (not "гость"), message exists, and username matches
+            const canEdit = displayName !== 'гость' && msg && msg.username === displayName
+            return canEdit ? (
               <button
                 onClick={handleEdit}
                 className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
