@@ -512,19 +512,20 @@ const handleReply = () => {
     setInputText('')
     setSpoilerOpen(false)
     
-    // Send to server
+    // Send to server with Authorization header
     fetch(`${API_URL}/messages`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${publicAnonKey}`
+      },
       body: JSON.stringify({
         id: messageId,
         text: newText
       })
-    }).then(() => {
-      fetchMessages()
     }).catch(err => {
       console.error('Error editing message:', err)
-      fetchMessages() // Refresh to get actual state
+      fetchMessages() // Refresh only on error to get actual state
     })
   }
 

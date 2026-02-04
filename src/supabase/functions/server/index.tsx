@@ -88,16 +88,26 @@ app.put('/make-server-98c5d13a/messages', async (c) => {
     const body = await c.req.json()
     const { id, text } = body
     
+    if (!id || !text) {
+      return c.json({ success: false, error: 'Missing id or text' }, 400)
+    }
+    
     // Get existing message
     const existingMessage = await kv.get(`msg_${id}`)
     if (!existingMessage) {
       return c.json({ success: false, error: 'Message not found' }, 404)
     }
     
-    // Update the message text
+    // Update the message text - create new object explicitly
     const updatedMessage = {
-      ...existingMessage,
-      text,
+      id: existingMessage.id,
+      username: existingMessage.username,
+      text: text,
+      timestamp: existingMessage.timestamp,
+      replyTo: existingMessage.replyTo || null,
+      fileUrl: existingMessage.fileUrl || null,
+      fileType: existingMessage.fileType || null,
+      fileName: existingMessage.fileName || null,
       edited: true
     }
     
