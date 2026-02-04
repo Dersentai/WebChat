@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -453,10 +453,91 @@ const message: Message = {
     setSelectedMessage(null)
   }
 
+// Edit message (только для зарегистрированных пользователей)
+  const handleEdit = () => {
+  if (!isRegisteredUser) return
+  const msg = messages.find(m => m.id === selectedMessage)
+  if (msg && msg.username === displayName) {
+  setEditingMessageId(msg.id)
+  setEditingText(msg.text)
+  }
+  setShowContextMenu(false)
+  setSelectedMessage(null)
+  }
+
+  // Save edited message
+  const saveEditedMessage = async () => {
+  if (!editingMessageId || !editingText.trim()) {
+  setEditingMessageId(null)
+  setEditingText('')
+  return
+  }
+  
+  try {
+  await fetch(`${API_URL}/messages/edit`, {
+  method: 'POST',
+  headers: {
+  'Content-Type': 'application/json',
+  Authorization: `Bearer ${publicAnonKey}`
+  },
+  body: JSON.stringify({
+  id: editingMessageId,
+  text: editingText.trim(),
+  username: displayName
+  })
+  })
+  
+  setEditingMessageId(null)
+  setEditingText('')
+  fetchMessages()
+  } catch (error) {
+  console.error('Error editing message:', error)
+  }
+  }
+
+  // Cancel editing
+const cancelEdit = () => {
+  setEditingMessageId(null)
+  setEditingText('')
+  }
+
+  // Spoiler функции
+  const [spoilerTitle, setSpoilerTitle] = useState('')
+  const [showSpoilerTitleInput, setShowSpoilerTitleInput] = useState(false)
+
+  const handleSpoilerClick = () => {
+  if (spoilerMode === 'none') {
+  // Первое нажатие - показать ввод названия спойлера
+  setShowSpoilerTitleInput(true)
+  } else if (spoilerMode === 'open') {
+  // Второе нажатие - добавить закрывающий тег
+  const closingTag = '[/spoiler]'
+  if (showFilePreview) {
+  setPreviewText(prev => prev + closingTag)
+  } else {
+  setInputText(prev => prev + closingTag)
+  }
+  setSpoilerMode('none')
+  }
+  }
+
+  const confirmSpoilerTitle = () => {
+  const title = spoilerTitle.trim() || 'Спойлер'
+  const openingTag = `[spoiler=${title}]`
+  if (showFilePreview) {
+  setPreviewText(prev => prev + openingTag)
+  } else {
+  setInputText(prev => prev + openingTag)
+  }
+  setSpoilerMode('open')
+  setSpoilerTitle('')
+  setShowSpoilerTitleInput(false)
+  }
+  
   // Delete messages
   const handleDelete = () => {
-    setDeleteMode(true)
-    setShowContextMenu(false)
+  setDeleteMode(true)
+  setShowContextMenu(false)
   }
 
   const confirmDelete = async () => {
@@ -603,8 +684,33 @@ const hexToRgba = (hex: string | undefined | null, alpha = 0.7) => {
 }
 
   // Render message content
+// Spoiler Block Component
+  const SpoilerBlock = ({ title, content }: { title: string, content: string }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  
+  return (
+  <div className="my-1 rounded overflow-hidden border border-gray-600">
+  <button
+  onClick={() => setIsOpen(!isOpen)}
+  className="w-full px-2 py-1 bg-gray-700 flex items-center justify-between text-left text-sm hover:bg-gray-600"
+  >
+  <span className="flex items-center gap-1">
+  {isOpen ? <EyeOff size={14} /> : <Eye size={14} />}
+  {title}
+  </span>
+  {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+  </button>
+  {isOpen && (
+  <div className="px-2 py-1 bg-gray-800/50 text-sm whitespace-pre-wrap">
+  {content}
+  </div>
+  )}
+  </div>
+  )
+  }
+
   const renderMessageContent = (msg: Message) => {
-    if (!msg.text && !msg.fileUrl) return null
+  if (!msg.text && !msg.fileUrl) return null
 
     // Check if URL is in quotes - then show as clickable text
     const urlInQuotes = msg.text.match(/["']((https?:\/\/[^"']+))["']/i)
@@ -804,11 +910,43 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       )
     }
 
-    // Regular text or uploaded file
-    return (
-      <div>
-        {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
-        {msg.fileUrl && (
+// Render text with spoilers
+  const renderTextWithSpoilers = (text: string) => {
+  const spoilerRegex = /\[spoiler=([^\]]+)\]([\s\S]*?)\[\/spoiler\]/g
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match
+  let keyIndex = 0
+
+  while ((match = spoilerRegex.exec(text)) !== null) {
+  // Текст до спойлера
+  if (match.index > lastIndex) {
+  parts.push(<span key={`text-${keyIndex++}`}>{text.slice(lastIndex, match.index)}</span>)
+  }
+  
+  // Спойлер
+  const title = match[1]
+  const content = match[2]
+  parts.push(
+  <SpoilerBlock key={`spoiler-${keyIndex++}`} title={title} content={content} />
+  )
+  
+  lastIndex = match.index + match[0].length
+  }
+
+  // Текст после последнего спойлера
+  if (lastIndex < text.length) {
+  parts.push(<span key={`text-${keyIndex++}`}>{text.slice(lastIndex)}</span>)
+  }
+
+  return parts.length > 0 ? parts : text
+  }
+
+  // Regular text or uploaded file
+  return (
+  <div>
+  {msg.text && <div className="break-words whitespace-pre-wrap">{renderTextWithSpoilers(msg.text)}</div>}
+  {msg.fileUrl && (
           <div className="mt-2">
             {msg.fileType?.startsWith('image/') && (
               <img src={msg.fileUrl} alt={msg.fileName || 'Image'} className="max-w-full rounded" style={{ maxHeight: '300px' }} />
@@ -916,7 +1054,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <span className="text-white">👤 {onlineCount}</span>
             <span className="text-white">👁 {viewCount}</span>
           </div>
-          <div className="text-xs text-gray-300 mt-0.5">{displayName}</div>
+          <div className="text-xs mt-0.5" style={{ color: isRegisteredUser ? userColors.nameColor : '#d1d5db' }}>{displayName}</div>
         </div>
         <button onClick={() => setShowInfo(true)} className="p-1">
           <Info size={20} style={{ color: settings.iconColor }} />
@@ -980,19 +1118,19 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           />
         </div>
       )}
-      <div className="w-full flex justify-start items-start">
-        <div
-          className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
-          style={{
-            marginTop: idx === 0 ? '8px' : '0',
-            backgroundColor: hexToRgba('#003a21', 0.8),
-            border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
-            boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
-          }}
-        >
-          <div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
-            {msg.username}
-          </div>
+<div className="w-full flex justify-start items-start">
+  <div
+  className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
+  style={{
+  marginTop: idx === 0 ? '8px' : '0',
+  backgroundColor: hexToRgba(msg.msgBgColor || '#003a21', 0.8),
+  border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
+  boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
+  }}
+  >
+  <div className="text-xs font-medium mb-1" style={{ color: msg.nameColor || '#ebef00' }}>
+  {msg.username}
+  </div>
 
           {msg.replyTo && renderReplyPreview(msg.replyTo)}
 
@@ -1015,30 +1153,38 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Context Menu */}
-      {showContextMenu && (
-        <div
-          className="fixed z-50 bg-gray-800 rounded-lg shadow-lg overflow-hidden"
-          style={{ 
-            top: `${contextMenuPosition.y}px`, 
-            left: `${contextMenuPosition.x}px`,
-            minWidth: '150px'
-          }}
-        >
-          <button
-            onClick={handleReply}
-            className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
-          >
-            Ответить
-          </button>
-          <button
-            onClick={handleDelete}
-            className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
-          >
-            Удалить
-          </button>
-        </div>
-      )}
+{/* Context Menu */}
+  {showContextMenu && (
+  <div
+  className="fixed z-50 bg-gray-800 rounded-lg shadow-lg overflow-hidden"
+  style={{
+  top: `${contextMenuPosition.y}px`,
+  left: `${contextMenuPosition.x}px`,
+  minWidth: '150px'
+  }}
+  >
+  <button
+  onClick={handleReply}
+  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
+  >
+  Ответить
+  </button>
+  {isRegisteredUser && messages.find(m => m.id === selectedMessage)?.username === displayName && (
+  <button
+  onClick={handleEdit}
+  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
+  >
+  Изменить
+  </button>
+  )}
+  <button
+  onClick={handleDelete}
+  className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
+  >
+  Удалить
+  </button>
+  </div>
+  )}
 
       {/* Delete Mode Bar */}
       {deleteMode && (
@@ -1065,62 +1211,181 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-{/* Reply Bar */}
-      {replyingTo && (
-        <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
-          <div className="flex-1 text-sm text-gray-300">
-            Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
-          </div>
-          <button onClick={() => setReplyingTo(null)} className="p-1">
-            <X size={16} className="text-gray-400" />
-          </button>
-        </div>
-      )}
+{/* Edit Bar */}
+  {editingMessageId && (
+  <div className="relative z-10 px-3 py-2 bg-gray-800">
+  <div className="flex items-center justify-between mb-2">
+  <span className="text-sm text-gray-300">Редактирование сообщения</span>
+  <button onClick={cancelEdit} className="p-1">
+  <X size={16} className="text-gray-400" />
+  </button>
+  </div>
+  <div className="flex gap-2">
+  <textarea
+  value={editingText}
+  onChange={(e) => setEditingText(e.target.value)}
+  className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400 resize-none"
+  rows={2}
+  />
+  <button
+  onClick={saveEditedMessage}
+  className="p-2 rounded-full"
+  style={{ backgroundColor: settings.iconColor }}
+  >
+  <Check size={18} className="text-white" />
+  </button>
+  </div>
+  </div>
+  )}
 
-      {/* Input Bar */}
-      <div 
-        className="relative z-10 px-3 py-3 flex items-center gap-2"
-        style={{ 
-          backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="p-2 rounded-full hover:bg-white/10"
-        >
-          <Paperclip size={20} style={{ color: settings.iconColor }} />
-        </button>
-       <textarea
-  value={inputText}
-  onChange={(e) => setInputText(e.target.value)}
-  placeholder="Сообщение..."
+  {/* Reply Bar */}
+  {replyingTo && !editingMessageId && (
+  <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
+  <div className="flex-1 text-sm text-gray-300">
+  Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
+  </div>
+  <button onClick={() => setReplyingTo(null)} className="p-1">
+  <X size={16} className="text-gray-400" />
+  </button>
+  </div>
+  )}
+
+{/* File Preview над вводом */}
+  {showFilePreview && previewFile && (
+  <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
+  <div className="flex items-center gap-2 flex-1 min-w-0">
+  {previewFile.type.startsWith('image/') && (
+  <img src={previewFile.url} alt="Preview" className="w-12 h-12 object-cover rounded" />
+  )}
+  {previewFile.type.startsWith('video/') && (
+  <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-white">Video</div>
+  )}
+  {previewFile.type.startsWith('audio/') && (
+  <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-white">Audio</div>
+  )}
+  {!previewFile.type.match(/^(image|video|audio)\//) && (
+  <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-white">File</div>
+  )}
+  <div className="flex-1 min-w-0">
+  <div className="text-xs text-white truncate">{previewFile.name}</div>
+  <div className="text-xs text-gray-400">{(previewFile.type || 'unknown').split('/')[0]}</div>
+  </div>
+  </div>
+  <button
+  onClick={() => {
+  setShowFilePreview(false)
+  setPreviewFile(null)
+  setPreviewText('')
+  }}
+  className="p-1"
+  >
+  <X size={16} className="text-gray-400" />
+  </button>
+  </div>
+  )}
+
+  {/* Toolbar - появляется при фокусе на поле ввода */}
+  {showToolbar && (
+  <div className="relative z-10 px-3 py-1 bg-gray-800 flex items-center gap-2">
+  <button
+  onClick={handleSpoilerClick}
+  className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${spoilerMode === 'open' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+  title={spoilerMode === 'open' ? 'Закрыть спойлер' : 'Добавить спойлер'}
+  >
+  {spoilerMode === 'open' ? <EyeOff size={14} /> : <Eye size={14} />}
+  {spoilerMode === 'open' ? 'Закрыть' : 'Спойлер'}
+  </button>
+  {spoilerMode === 'open' && (
+  <span className="text-xs text-yellow-400">Введите содержимое спойлера и нажмите "Закрыть"</span>
+  )}
+  </div>
+  )}
+
+  {/* Spoiler Title Input Modal */}
+  {showSpoilerTitleInput && (
+  <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
+  <input
+  type="text"
+  value={spoilerTitle}
+  onChange={(e) => setSpoilerTitle(e.target.value)}
+  placeholder="Название спойлера..."
+  className="flex-1 bg-white/10 text-white px-3 py-1 rounded text-sm outline-none placeholder-gray-400"
+  onKeyDown={(e) => {
+  if (e.key === 'Enter') {
+  e.preventDefault()
+  confirmSpoilerTitle()
+  }
+  }}
+  autoFocus
+  />
+  <button
+  onClick={confirmSpoilerTitle}
+  className="px-3 py-1 rounded text-sm text-white"
+  style={{ backgroundColor: settings.iconColor }}
+  >
+  OK
+  </button>
+  <button
+  onClick={() => {
+  setShowSpoilerTitleInput(false)
+  setSpoilerTitle('')
+  }}
+  className="p-1"
+  >
+  <X size={16} className="text-gray-400" />
+  </button>
+  </div>
+  )}
+
+  {/* Input Bar */}
+  <div
+  className="relative z-10 px-3 py-3 flex items-center gap-2"
+  style={{
+  backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}`
+  }}
+  >
+  <input
+  ref={fileInputRef}
+  type="file"
+  onChange={handleFileSelect}
+  className="hidden"
+  />
+  <button
+  onClick={() => fileInputRef.current?.click()}
+  className="p-2 rounded-full hover:bg-white/10"
+  >
+  <Paperclip size={20} style={{ color: settings.iconColor }} />
+  </button>
+  <textarea
+  value={showFilePreview ? previewText : inputText}
+  onFocus={() => setShowToolbar(true)}
+  onBlur={() => {
+  // Небольшая задержка, чтобы кнопки тулбара успели сработать
+  setTimeout(() => setShowToolbar(false), 200)
+  }}
+  onChange={(e) => showFilePreview ? setPreviewText(e.target.value) : setInputText(e.target.value)}
+  placeholder={showFilePreview ? "Добавить текст к файлу..." : "Сообщение..."}
   className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400 resize-none"
   rows={2}
   onKeyDown={(e) => {
-    // Оставляем Enter как переход на новую строку.
-    // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      sendMessage();
-    }
+  // Оставляем Enter как переход на новую строку.
+  // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+  e.preventDefault();
+  showFilePreview ? sendMessageWithFile() : sendMessage();
+  }
   }}
-/>
-
-<button
+  />
+  
+  <button
   type="button" // обязательно, чтобы кнопка не триггерила submit формы по умолчанию
-  onClick={sendMessage}
+  onClick={showFilePreview ? sendMessageWithFile : sendMessage}
   className="p-2 rounded-full"
   style={{ backgroundColor: settings.iconColor }}
->
+  >
   <Send size={18} className="text-white" />
-</button>
-      </div>
+  </button>
+  </div>
 
       {/* Info Modal */}
       {showInfo && (
@@ -1190,8 +1455,81 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Set Theme Modal */}
-      {showSetTheme && (
+{/* User Color Selection Modal */}
+  {showColorMenu && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full">
+  <div className="flex items-center justify-between mb-4">
+  <h2 className="text-xl font-bold text-white">Выбор цветов</h2>
+  <button onClick={() => setShowColorMenu(false)}>
+  <X size={24} className="text-gray-400" />
+  </button>
+  </div>
+  <div className="space-y-4">
+  <div>
+  <label className="text-sm text-gray-300 block mb-2">Цвет имени</label>
+  <div className="flex items-center gap-2 mb-2">
+  <input
+  type="color"
+  value={tempNameColor}
+  onChange={(e) => setTempNameColor(e.target.value)}
+  className="w-12 h-10 rounded cursor-pointer"
+  style={{ background: `linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)` }}
+  />
+  <input
+  type="text"
+  value={tempNameColor}
+  onChange={(e) => setTempNameColor(e.target.value)}
+  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm"
+  placeholder="#RRGGBB"
+  />
+  </div>
+  <div className="text-xs text-gray-400">Предпросмотр: <span style={{ color: tempNameColor }}>{displayName}</span></div>
+  </div>
+  <div>
+  <label className="text-sm text-gray-300 block mb-2">Цвет фона сообщений</label>
+  <div className="flex items-center gap-2 mb-2">
+  <input
+  type="color"
+  value={tempMsgBgColor}
+  onChange={(e) => setTempMsgBgColor(e.target.value)}
+  className="w-12 h-10 rounded cursor-pointer"
+  style={{ background: `linear-gradient(to right, red, orange, yellow, green, cyan, blue, violet)` }}
+  />
+  <input
+  type="text"
+  value={tempMsgBgColor}
+  onChange={(e) => setTempMsgBgColor(e.target.value)}
+  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm"
+  placeholder="#RRGGBB"
+  />
+  </div>
+  <div className="p-2 rounded text-xs text-white" style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}>
+  Предпросмотр фона сообщения
+  </div>
+  </div>
+  <div className="flex gap-2">
+  <button
+  onClick={() => setShowColorMenu(false)}
+  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
+  >
+  Отмена
+  </button>
+  <button
+  onClick={saveUserColors}
+  className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
+  style={{ backgroundColor: settings.iconColor }}
+  >
+  Сохранить
+  </button>
+  </div>
+  </div>
+  </div>
+  </div>
+  )}
+
+  {/* Set Theme Modal */}
+  {showSetTheme && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full">
             <div className="flex items-center justify-between mb-4">
@@ -1257,69 +1595,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* File Preview Modal */}
-      {showFilePreview && previewFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Предпросмотр</h2>
-              <button onClick={() => {
-                setShowFilePreview(false)
-                setPreviewFile(null)
-                setPreviewText('')
-              }}>
-                <X size={24} className="text-gray-400" />
-              </button>
-            </div>
-            <div className="mb-4">
-              {previewFile.type.startsWith('image/') && (
-                <img src={previewFile.url} alt="Preview" className="max-w-full rounded" />
-              )}
-              {previewFile.type.startsWith('video/') && (
-                <video controls className="max-w-full rounded">
-                  <source src={previewFile.url} type={previewFile.type} />
-                </video>
-              )}
-              {previewFile.type.startsWith('audio/') && (
-                <audio controls className="w-full" src={previewFile.url} />
-              )}
-              {!previewFile.type.match(/^(image|video|audio)\//) && (
-                <div className="text-gray-300 text-sm">
-                  📎 {previewFile.name}
-                </div>
-              )}
-            </div>
-            <textarea
-              value={previewText}
-              onChange={(e) => setPreviewText(e.target.value)}
-              placeholder="Добавить текст..."
-              className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm outline-none mb-4"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowFilePreview(false)
-                  setPreviewFile(null)
-                  setPreviewText('')
-                }}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={sendMessageWithFile}
-                className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
-                style={{ backgroundColor: settings.iconColor }}
-              >
-                Отправить
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Click outside to close context menu */}
+{/* Click outside to close context menu */}
       {showContextMenu && (
         <div
           className="fixed inset-0 z-40"
