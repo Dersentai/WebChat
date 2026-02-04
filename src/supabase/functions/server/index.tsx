@@ -70,21 +70,15 @@ app.post('/make-server-98c5d13a/messages/edit', async (c) => {
     const body = await c.req.json()
     const { id, text, username } = body
     
-    console.log('[v0] Edit request:', { id, text, username })
-    
     // Get existing message
     const existingMessage = await kv.get(`msg_${id}`)
     
-    console.log('[v0] Existing message:', existingMessage)
-    
     if (!existingMessage) {
-      console.log('[v0] Message not found for id:', id)
       return c.json({ success: false, error: 'Message not found' }, 404)
     }
     
     // Check if user is the author
     if (existingMessage.username !== username) {
-      console.log('[v0] Unauthorized - message author:', existingMessage.username, 'requester:', username)
       return c.json({ success: false, error: 'Unauthorized' }, 403)
     }
     
@@ -96,15 +90,11 @@ app.post('/make-server-98c5d13a/messages/edit', async (c) => {
       editedAt: Date.now()
     }
     
-    console.log('[v0] Updated message:', updatedMessage)
-    
     await kv.set(`msg_${id}`, updatedMessage)
-    
-    console.log('[v0] Message saved successfully')
     
     return c.json({ success: true, message: updatedMessage })
   } catch (error) {
-    console.log('[v0] Error editing message:', error)
+    console.log('Error editing message:', error)
     return c.json({ success: false, error: String(error) }, 500)
   }
 })

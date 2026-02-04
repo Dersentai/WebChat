@@ -133,7 +133,6 @@ const markViewCounted = (): void => {
       })
       const data = await res.json()
       if (data.success) {
-        console.log('[v0] Fetched messages sample:', data.messages.slice(-2))
         setMessages(data.messages)
       }
     } catch (error) {
@@ -311,7 +310,12 @@ useEffect(() => {
         name: file.name
       })
       setShowFilePreview(true)
-      setPreviewText('')
+      // Если в режиме спойлера - добавляем тег файла в текст
+      if (spoilerMode === 'open') {
+        setPreviewText(prev => prev + `[file=${file.name}]`)
+      } else {
+        setPreviewText('')
+      }
     }
     reader.readAsDataURL(file)
   }
@@ -394,7 +398,6 @@ useEffect(() => {
     }
 
     try {
-console.log('[v0] Sending message with colors:', { isRegisteredUser, nameColor: userColors.nameColor, msgBgColor: userColors.msgBgColor })
 const message: Message = {
   id: Date.now().toString(),
   username: displayName,
@@ -404,7 +407,6 @@ const message: Message = {
   nameColor: isRegisteredUser ? userColors.nameColor : null,
   msgBgColor: isRegisteredUser ? userColors.msgBgColor : null
   }
-console.log('[v0] Message object:', message)
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -468,12 +470,9 @@ console.log('[v0] Message object:', message)
 
 // Edit message (только для зарегистрированных пользователей)
   const handleEdit = () => {
-  console.log('[v0] handleEdit called, isRegisteredUser:', isRegisteredUser, 'selectedMessage:', selectedMessage)
   if (!isRegisteredUser) return
   const msg = messages.find(m => m.id === selectedMessage)
-  console.log('[v0] Found message:', msg, 'displayName:', displayName)
   if (msg && msg.username === displayName) {
-  console.log('[v0] Setting editing mode for message:', msg.id)
   setEditingMessageId(msg.id)
   setEditingText(msg.text)
   }
@@ -483,11 +482,29 @@ console.log('[v0] Message object:', message)
 
   // Save edited message
   const saveEditedMessage = async () => {
-  if (!editingMessageId || !editingText.trim()) {
+  if (!editingMessageId) {
+  return
+  }
+  
+  const newText = editingText.trim()
+  if (!newText) {
   setEditingMessageId(null)
   setEditingText('')
   return
   }
+  
+  const messageId = editingMessageId
+  const currentUsername = displayName
+  
+  // Сначала обновляем локально для мгновенной обратной связи
+  setMessages(prev => prev.map(msg => 
+  msg.id === messageId 
+  ? { ...msg, text: newText }
+  : msg
+  ))
+  
+  setEditingMessageId(null)
+  setEditingText('')
   
   try {
   const response = await fetch(`${API_URL}/messages/edit`, {
@@ -497,27 +514,21 @@ console.log('[v0] Message object:', message)
   Authorization: `Bearer ${publicAnonKey}`
   },
   body: JSON.stringify({
-  id: editingMessageId,
-  text: editingText.trim(),
-  username: displayName
+  id: messageId,
+  text: newText,
+  username: currentUsername
   })
   })
   
   const result = await response.json()
   
-  if (result.success) {
-  // Обновить локальное состояние сразу
-  setMessages(prev => prev.map(msg => 
-  msg.id === editingMessageId 
-  ? { ...msg, text: editingText.trim() }
-  : msg
-  ))
+  if (!result.success) {
+  // Если ошибка - перезагружаем сообщения с сервера
+  fetchMessages()
   }
-  
-  setEditingMessageId(null)
-  setEditingText('')
   } catch (error) {
   console.error('Error editing message:', error)
+  fetchMessages()
   }
   }
 
@@ -711,8 +722,11 @@ const hexToRgba = (hex: string | undefined | null, alpha = 0.7) => {
 
   // Render message content
 // Spoiler Block Component
-  const SpoilerBlock = ({ title, content }: { title: string, content: string }) => {
+  const SpoilerBlock = ({ title, content, fileUrl, fileType }: { title: string, content: string, fileUrl?: string | null, fileType?: string | null }) => {
   const [isOpen, setIsOpen] = useState(false)
+  
+  // Убираем тег [file=...] из контента для отображения
+  const cleanContent = content.replace(/\[file=[^\]]+\]/g, '').trim()
   
   return (
   <div className="my-1 rounded overflow-hidden border border-gray-600">
@@ -727,8 +741,24 @@ const hexToRgba = (hex: string | undefined | null, alpha = 0.7) => {
   {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
   </button>
   {isOpen && (
-  <div className="px-2 py-1 bg-gray-800/50 text-sm whitespace-pre-wrap">
-  {content}
+  <div className="px-2 py-1 bg-gray-800/50 text-sm">
+  {cleanContent && <div className="whitespace-pre-wrap mb-2">{cleanContent}</div>}
+  {fileUrl && fileType?.startsWith('image/') && (
+  <img src={fileUrl} alt="Spoiler image" className="max-w-full rounded" />
+  )}
+  {fileUrl && fileType?.startsWith('video/') && (
+  <video controls className="max-w-full rounded">
+  <source src={fileUrl} type={fileType} />
+  </video>
+  )}
+  {fileUrl && fileType?.startsWith('audio/') && (
+  <audio controls className="w-full" src={fileUrl} />
+  )}
+  {fileUrl && !fileType?.match(/^(image|video|audio)\//) && (
+  <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
+  Скачать файл
+  </a>
+  )}
   </div>
   )}
   </div>
@@ -936,14 +966,17 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       )
     }
 
-// Render text with spoilers
-  const renderTextWithSpoilers = (text: string) => {
+// Проверяем, есть ли файл внутри спойлера
+  const hasFileInSpoiler = msg.text && msg.text.includes('[file=') && msg.text.includes('[spoiler=')
+  
+  // Render text with spoilers
+  const renderTextWithSpoilers = (text: string, fileUrl?: string | null, fileType?: string | null) => {
   const spoilerRegex = /\[spoiler=([^\]]+)\]([\s\S]*?)\[\/spoiler\]/g
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match
   let keyIndex = 0
-
+  
   while ((match = spoilerRegex.exec(text)) !== null) {
   // Текст до спойлера
   if (match.index > lastIndex) {
@@ -953,26 +986,34 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
   // Спойлер
   const title = match[1]
   const content = match[2]
+  // Проверяем, содержит ли спойлер тег файла
+  const hasFileTag = content.includes('[file=')
   parts.push(
-  <SpoilerBlock key={`spoiler-${keyIndex++}`} title={title} content={content} />
+  <SpoilerBlock 
+  key={`spoiler-${keyIndex++}`} 
+  title={title} 
+  content={content} 
+  fileUrl={hasFileTag ? fileUrl : null}
+  fileType={hasFileTag ? fileType : null}
+  />
   )
   
   lastIndex = match.index + match[0].length
   }
-
+  
   // Текст после последнего спойлера
   if (lastIndex < text.length) {
   parts.push(<span key={`text-${keyIndex++}`}>{text.slice(lastIndex)}</span>)
   }
-
+  
   return parts.length > 0 ? parts : text
   }
-
+  
   // Regular text or uploaded file
   return (
   <div>
-  {msg.text && <div className="break-words whitespace-pre-wrap">{renderTextWithSpoilers(msg.text)}</div>}
-  {msg.fileUrl && (
+  {msg.text && <div className="break-words whitespace-pre-wrap">{renderTextWithSpoilers(msg.text, msg.fileUrl, msg.fileType)}</div>}
+  {msg.fileUrl && !hasFileInSpoiler && (
           <div className="mt-2">
             {msg.fileType?.startsWith('image/') && (
               <img src={msg.fileUrl} alt={msg.fileName || 'Image'} className="max-w-full rounded" style={{ maxHeight: '300px' }} />
