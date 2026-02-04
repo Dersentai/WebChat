@@ -486,11 +486,8 @@ const handleReply = () => {
 
   // Edit message - only for own messages
   const handleEdit = () => {
-    console.log('[v0] handleEdit called', { selectedMessage, displayName })
     const msg = messages.find(m => m.id === selectedMessage)
-    console.log('[v0] Found message:', msg)
     if (msg && msg.username === displayName) {
-      console.log('[v0] Setting editingMessage and inputText')
       setEditingMessage(msg)
       setInputText(msg.text)
     }
@@ -499,38 +496,36 @@ const handleReply = () => {
   }
 
   // Save edited message
-  const saveEditedMessage = async () => {
-    console.log('[v0] saveEditedMessage called', { editingMessage, inputText })
-    if (!editingMessage || !inputText.trim()) {
-      console.log('[v0] Early return - no editingMessage or empty inputText')
-      return
-    }
+  const saveEditedMessage = () => {
+    if (!editingMessage || !inputText.trim()) return
     
-    try {
-      console.log('[v0] Sending PUT request to:', `${API_URL}/messages`)
-      const res = await fetch(`${API_URL}/messages`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingMessage.id,
-          text: inputText.trim()
-        })
+    const messageId = editingMessage.id
+    const newText = inputText.trim()
+    
+    // Optimistically update local state first
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
+    ))
+    
+    // Clear editing state
+    setEditingMessage(null)
+    setInputText('')
+    setSpoilerOpen(false)
+    
+    // Send to server
+    fetch(`${API_URL}/messages`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: messageId,
+        text: newText
       })
-      
-      console.log('[v0] Response status:', res.status, res.ok)
-      
-      if (res.ok) {
-        setEditingMessage(null)
-        setInputText('')
-        setSpoilerOpen(false)
-        fetchMessages()
-      } else {
-        const errorData = await res.text()
-        console.log('[v0] Error response:', errorData)
-      }
-    } catch (error) {
-      console.error('[v0] Error editing message:', error)
-    }
+    }).then(() => {
+      fetchMessages()
+    }).catch(err => {
+      console.error('Error editing message:', err)
+      fetchMessages() // Refresh to get actual state
+    })
   }
 
   // Cancel editing
@@ -1408,9 +1403,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 <button
   type="button"
   onClick={() => {
-    console.log('[v0] Send button clicked', { editingMessage, showFilePreview, previewFile })
     if (editingMessage) {
-      console.log('[v0] Calling saveEditedMessage')
       saveEditedMessage();
     } else if (showFilePreview && previewFile) {
       sendMessageWithFile();
