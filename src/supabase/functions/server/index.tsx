@@ -82,6 +82,44 @@ app.post('/make-server-98c5d13a/messages/delete', async (c) => {
   }
 })
 
+// Edit message - only the author can edit their own message
+app.post('/make-server-98c5d13a/messages/edit', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { id, newText, username } = body
+    
+    if (!id || typeof newText !== 'string' || !username) {
+      return c.json({ success: false, error: 'Неверные параметры' }, 400)
+    }
+    
+    // Get the existing message
+    const existingMessage = await kv.get(`msg_${id}`)
+    
+    if (!existingMessage) {
+      return c.json({ success: false, error: 'Сообщение не найдено' }, 404)
+    }
+    
+    // Check if the username matches (case-sensitive)
+    if (existingMessage.username !== username) {
+      return c.json({ success: false, error: 'Вы можете редактировать только свои сообщения' }, 403)
+    }
+    
+    // Update the message with new text and add editedAt timestamp
+    const updatedMessage = {
+      ...existingMessage,
+      text: newText.trim(),
+      editedAt: Date.now()
+    }
+    
+    await kv.set(`msg_${id}`, updatedMessage)
+    
+    return c.json({ success: true, message: updatedMessage })
+  } catch (error) {
+    console.log('Error editing message:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
 // Upload file
 app.post('/make-server-98c5d13a/upload', async (c) => {
   try {
