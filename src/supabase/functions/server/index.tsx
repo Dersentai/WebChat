@@ -83,7 +83,7 @@ app.post('/make-server-98c5d13a/messages/delete', async (c) => {
 })
 
 // Edit message
-app.put('/make-server-98c5d13a/messages', async (c) => {
+app.post('/make-server-98c5d13a/messages/edit', async (c) => {
   try {
     const body = await c.req.json()
     const { id, text } = body
