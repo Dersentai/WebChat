@@ -11,6 +11,13 @@ interface Message {
   fileUrl?: string | null
   fileType?: string | null
   fileName?: string | null
+  nameColor?: string | null
+  msgBgColor?: string | null
+}
+
+interface UserColors {
+  nameColor: string
+  msgBgColor: string
 }
 
 interface Settings {
@@ -49,6 +56,14 @@ export default function App() {
   const [themePanel, setThemePanel] = useState('#1a1a1a')
   const [themeIcon, setThemeIcon] = useState('#64b5f6')
   const [themeOpacity, setThemeOpacity] = useState(0.85)
+  const [showColorMenu, setShowColorMenu] = useState(false)
+  const [userColors, setUserColors] = useState<UserColors>({ nameColor: '#ebef00', msgBgColor: '#003a21' })
+  const [tempNameColor, setTempNameColor] = useState('#ebef00')
+  const [tempMsgBgColor, setTempMsgBgColor] = useState('#003a21')
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState('')
+  const [showToolbar, setShowToolbar] = useState(false)
+  const [spoilerMode, setSpoilerMode] = useState<'none' | 'open' | 'close'>('none')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -92,11 +107,21 @@ const markViewCounted = (): void => {
   } catch (e) {}
 }
 
-  // Load username from localStorage
+  // Load username and colors from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('chatUsername')
     if (saved) {
       setDisplayName(saved)
+      // Загрузить цвета только если пользователь вошёл под именем
+      const savedColors = localStorage.getItem('chatUserColors')
+      if (savedColors) {
+        try {
+          const colors = JSON.parse(savedColors)
+          setUserColors(colors)
+          setTempNameColor(colors.nameColor)
+          setTempMsgBgColor(colors.msgBgColor)
+        } catch (e) {}
+      }
     }
   }, [])
 
@@ -237,11 +262,30 @@ useEffect(() => {
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
+      // Показать меню выбора цвета только для зарегистрированных
+      setShowColorMenu(true)
     } else {
       setDisplayName('гость')
       localStorage.removeItem('chatUsername')
+      // Сбросить цвета на значения по умолчанию для гостей
+      const defaultColors = { nameColor: '#ebef00', msgBgColor: '#003a21' }
+      setUserColors(defaultColors)
+      setTempNameColor('#ebef00')
+      setTempMsgBgColor('#003a21')
+      localStorage.removeItem('chatUserColors')
     }
   }
+
+  // Сохранить выбранные цвета
+  const saveUserColors = () => {
+    const colors = { nameColor: tempNameColor, msgBgColor: tempMsgBgColor }
+    setUserColors(colors)
+    localStorage.setItem('chatUserColors', JSON.stringify(colors))
+    setShowColorMenu(false)
+  }
+
+  // Проверка: является ли пользователь зарегистрированным (не гость)
+  const isRegisteredUser = displayName !== 'гость'
 
   // Handle file selection
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,17 +330,19 @@ useEffect(() => {
         return
       }
 
-      // Send message
-      const message: Message = {
-        id: Date.now().toString(),
-        username: displayName,
-        text: previewText.trim(),
-        timestamp: Date.now(),
-        replyTo: replyingTo?.id || null,
-        fileUrl: uploadData.fileUrl,
-        fileType: uploadData.fileType,
-        fileName: uploadData.fileName
-      }
+// Send message
+  const message: Message = {
+  id: Date.now().toString(),
+  username: displayName,
+  text: previewText.trim(),
+  timestamp: Date.now(),
+  replyTo: replyingTo?.id || null,
+  fileUrl: uploadData.fileUrl,
+  fileType: uploadData.fileType,
+  fileName: uploadData.fileName,
+  nameColor: isRegisteredUser ? userColors.nameColor : null,
+  msgBgColor: isRegisteredUser ? userColors.msgBgColor : null
+  }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -337,13 +383,15 @@ useEffect(() => {
     }
 
     try {
-      const message: Message = {
-        id: Date.now().toString(),
-        username: displayName,
-        text,
-        timestamp: Date.now(),
-        replyTo: replyingTo?.id || null
-      }
+const message: Message = {
+  id: Date.now().toString(),
+  username: displayName,
+  text,
+  timestamp: Date.now(),
+  replyTo: replyingTo?.id || null,
+  nameColor: isRegisteredUser ? userColors.nameColor : null,
+  msgBgColor: isRegisteredUser ? userColors.msgBgColor : null
+  }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
