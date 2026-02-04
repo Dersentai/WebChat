@@ -62,6 +62,41 @@ app.post('/make-server-98c5d13a/messages', async (c) => {
   }
 })
 
+// Edit message
+app.put('/make-server-98c5d13a/messages/:id', async (c) => {
+  try {
+    const messageId = c.req.param('id')
+    const body = await c.req.json()
+    const { text, username } = body
+    
+    // Get existing message
+    const existingMessage = await kv.get(`msg_${messageId}`)
+    if (!existingMessage) {
+      return c.json({ success: false, error: 'Сообщение не найдено' }, 404)
+    }
+    
+    // Check if user is the author
+    if (existingMessage.username !== username) {
+      return c.json({ success: false, error: 'Вы можете редактировать только свои сообщения' }, 403)
+    }
+    
+    // Update message with new text and edited flag
+    const updatedMessage = {
+      ...existingMessage,
+      text,
+      edited: true,
+      editedAt: Date.now()
+    }
+    
+    await kv.set(`msg_${messageId}`, updatedMessage)
+    
+    return c.json({ success: true, message: updatedMessage })
+  } catch (error) {
+    console.log('Error editing message:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
 // Delete messages
 app.post('/make-server-98c5d13a/messages/delete', async (c) => {
   try {

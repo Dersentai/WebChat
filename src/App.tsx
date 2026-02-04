@@ -11,6 +11,8 @@ interface Message {
   fileUrl?: string | null
   fileType?: string | null
   fileName?: string | null
+  edited?: boolean
+  editedAt?: number
 }
 
 interface Settings {
@@ -45,6 +47,8 @@ export default function App() {
   })
   const [deleteMode, setDeleteMode] = useState(false)
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set())
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  const [editText, setEditText] = useState('')
   const [bgUrl, setBgUrl] = useState('')
   const [themePanel, setThemePanel] = useState('#1a1a1a')
   const [themeIcon, setThemeIcon] = useState('#64b5f6')
