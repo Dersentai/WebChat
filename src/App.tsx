@@ -1,6 +1,28 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
+
+// Компонент спойлера
+function SpoilerBlock({ title, content }: { title: string; content: string }) {
+  const [isOpen, setIsOpen] = useState(false)
+  
+  return (
+    <div className="my-2 border border-gray-600 rounded overflow-hidden">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 bg-gray-700/50 flex items-center gap-2 text-left hover:bg-gray-700/70 transition-colors"
+      >
+        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <span className="text-sm font-medium">{title}</span>
+      </button>
+      {isOpen && (
+        <div className="px-3 py-2 bg-gray-800/30 text-sm whitespace-pre-wrap">
+          {content}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Message {
   id: string
@@ -10,7 +32,10 @@ interface Message {
   replyTo?: string | null
   fileUrl?: string | null
   fileType?: string | null
-  fileName?: string | null
+visibleFileName?: string | null
+  userId?: string | null
+  nameColor?: string | null
+  bgColor?: string | null
 }
 
 interface Settings {
@@ -30,7 +55,7 @@ export default function App() {
   const [showSetTheme, setShowSetTheme] = useState(false)
   const [showFilePreview, setShowFilePreview] = useState(false)
   const [previewFile, setPreviewFile] = useState<{ url: string, type: string, name: string } | null>(null)
-  const [previewText, setPreviewText] = useState('')
+  
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
@@ -49,6 +74,15 @@ export default function App() {
   const [themePanel, setThemePanel] = useState('#1a1a1a')
   const [themeIcon, setThemeIcon] = useState('#64b5f6')
   const [themeOpacity, setThemeOpacity] = useState(0.85)
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [userNameColor, setUserNameColor] = useState('#ebef00')
+  const [userBgColor, setUserBgColor] = useState('#003a21')
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+  const [showToolbar, setShowToolbar] = useState(false)
+  const [spoilerMode, setSpoilerMode] = useState<'none' | 'opening' | 'closing'>('none')
+  const [spoilerTitle, setSpoilerTitle] = useState('')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -151,7 +185,8 @@ const updatePresence = async () => {
       },
       body: JSON.stringify({
         userId: userId.current,
-        isNewVisit: isNewVisitForServer
+        isNewVisit: isNewVisitForServer,
+        username: displayName
       })
     })
 
@@ -159,6 +194,9 @@ const updatePresence = async () => {
     if (data.success) {
       setOnlineCount(data.onlineCount)
       setViewCount(data.views)
+      if (data.onlineUsernames) {
+        setOnlineUsers(data.onlineUsernames)
+      }
 
       hasVisited.current = true
       try { localStorage.setItem('chatHasVisited', 'true') } catch (e) {}
@@ -237,11 +275,26 @@ useEffect(() => {
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
+      // Показать меню выбора цвета для авторизованных пользователей
+      setShowColorPicker(true)
     } else {
       setDisplayName('гость')
       localStorage.removeItem('chatUsername')
+      // Сбросить цвета на значения по умолчанию для гостя
+      setUserNameColor('#ebef00')
+      setUserBgColor('#003a21')
+      localStorage.removeItem('chatUserNameColor')
+      localStorage.removeItem('chatUserBgColor')
     }
   }
+
+  // Загрузка сохранённых цветов при старте
+  useEffect(() => {
+    const savedNameColor = localStorage.getItem('chatUserNameColor')
+    const savedBgColor = localStorage.getItem('chatUserBgColor')
+    if (savedNameColor) setUserNameColor(savedNameColor)
+    if (savedBgColor) setUserBgColor(savedBgColor)
+  }, [])
 
   // Handle file selection
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,9 +309,10 @@ useEffect(() => {
         name: file.name
       })
       setShowFilePreview(true)
-      setPreviewText('')
     }
     reader.readAsDataURL(file)
+    // Сбрасываем input чтобы можно было выбрать тот же файл снова
+    e.target.value = ''
   }
 
   // Send message with file
@@ -290,12 +344,15 @@ useEffect(() => {
       const message: Message = {
         id: Date.now().toString(),
         username: displayName,
-        text: previewText.trim(),
+        text: inputText.trim(),
         timestamp: Date.now(),
         replyTo: replyingTo?.id || null,
         fileUrl: uploadData.fileUrl,
         fileType: uploadData.fileType,
-        fileName: uploadData.fileName
+        fileName: uploadData.fileName,
+        userId: displayName !== 'гость' ? userId.current : null,
+        nameColor: displayName !== 'гость' ? userNameColor : '#ebef00',
+        bgColor: displayName !== 'гость' ? userBgColor : '#003a21'
       }
 
       await fetch(`${API_URL}/messages`, {
@@ -309,7 +366,7 @@ useEffect(() => {
 
       setShowFilePreview(false)
       setPreviewFile(null)
-      setPreviewText('')
+      setInputText('')
       setReplyingTo(null)
       fetchMessages()
     } catch (error) {
@@ -342,7 +399,10 @@ useEffect(() => {
         username: displayName,
         text,
         timestamp: Date.now(),
-        replyTo: replyingTo?.id || null
+        replyTo: replyingTo?.id || null,
+        userId: displayName !== 'гость' ? userId.current : null,
+        nameColor: displayName !== 'гость' ? userNameColor : '#ebef00',
+        bgColor: displayName !== 'гость' ? userBgColor : '#003a21'
       }
 
       await fetch(`${API_URL}/messages`, {
@@ -403,6 +463,78 @@ useEffect(() => {
     }
     setShowContextMenu(false)
     setSelectedMessage(null)
+  }
+
+  // Edit message
+  const handleEditSave = async () => {
+    if (!editingMessageId || !editText.trim()) return
+    
+    try {
+      const res = await fetch(`${API_URL}/messages/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`
+        },
+        body: JSON.stringify({
+          id: editingMessageId,
+          text: editText.trim(),
+          userId: userId.current
+        })
+      })
+      
+      const data = await res.json()
+      if (data.success) {
+        fetchMessages()
+        setEditingMessageId(null)
+        setEditText('')
+      } else {
+        alert(data.error || 'Ошибка редактирования')
+      }
+    } catch (error) {
+      console.error('Error editing message:', error)
+      alert('Ошибка редактирования')
+    }
+  }
+
+  // Save color preferences
+  const saveColorPreferences = () => {
+    localStorage.setItem('chatUserNameColor', userNameColor)
+    localStorage.setItem('chatUserBgColor', userBgColor)
+    setShowColorPicker(false)
+  }
+
+  // Render spoiler content
+  const renderSpoilerContent = (text: string) => {
+    // Паттерн для спойлеров: [spoiler=название]содержимое[/spoiler]
+    const spoilerRegex = /\[spoiler=([^\]]*)\]([\s\S]*?)\[\/spoiler\]/g
+    const parts: (string | JSX.Element)[] = []
+    let lastIndex = 0
+    let match
+    let keyIndex = 0
+
+    while ((match = spoilerRegex.exec(text)) !== null) {
+      // Текст до спойлера
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index))
+      }
+      
+      const spoilerTitle = match[1] || 'Спойлер'
+      const spoilerContent = match[2]
+      
+      parts.push(
+        <SpoilerBlock key={keyIndex++} title={spoilerTitle} content={spoilerContent} />
+      )
+      
+      lastIndex = match.index + match[0].length
+    }
+    
+    // Остаток текста после последнего спойлера
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : text
   }
 
   // Delete messages
@@ -868,7 +1000,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <span className="text-white">👤 {onlineCount}</span>
             <span className="text-white">👁 {viewCount}</span>
           </div>
-          <div className="text-xs text-gray-300 mt-0.5">{displayName}</div>
+          <div className="text-xs mt-0.5" style={{ color: displayName !== 'гость' ? userNameColor : '#d1d5db' }}>{displayName}</div>
         </div>
         <button onClick={() => setShowInfo(true)} className="p-1">
           <Info size={20} style={{ color: settings.iconColor }} />
@@ -934,23 +1066,32 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       )}
       <div className="w-full flex justify-start items-start">
         <div
-          className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
+          className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words relative"
           style={{
             marginTop: idx === 0 ? '8px' : '0',
-            backgroundColor: hexToRgba('#003a21', 0.8),
+            backgroundColor: hexToRgba(msg.bgColor || '#003a21', 0.8),
             border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-          <div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
+          {/* Индикатор онлайн/оффлайн */}
+          <div className="absolute top-2 right-2">
+            {onlineUsers.includes(msg.username) ? (
+              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_2px_rgba(34,197,94,0.6)]" />
+            ) : (
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_4px_1px_rgba(239,68,68,0.5)]" />
+            )}
+          </div>
+          
+          <div className="text-xs font-medium mb-1 pr-4" style={{ color: msg.nameColor || '#ebef00' }}>
             {msg.username}
           </div>
 
           {msg.replyTo && renderReplyPreview(msg.replyTo)}
 
-          {content ?? (msg.text ? <div className="break-words whitespace-pre-wrap">{msg.text}</div> : null)}
+          {content ?? (msg.text ? <div className="break-words whitespace-pre-wrap">{renderSpoilerContent(msg.text)}</div> : null)}
 
-          <div className="text-xs text-gray-400 mt-1">
+          <div className="text-xs text-gray-400 mt-1 flex items-center gap-2">
             {new Date(msg.timestamp).toLocaleString('ru-RU', {
               year: 'numeric',
               month: '2-digit',
@@ -958,6 +1099,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               hour: '2-digit',
               minute: '2-digit'
             })}
+            {(msg as any).edited && <span className="text-gray-500">(ред.)</span>}
           </div>
         </div>
       </div>
@@ -983,6 +1125,26 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
+          {/* Показывать "Изменить" только для своих сообщений авторизованным пользователям */}
+          {displayName !== 'гость' && (() => {
+            const selectedMsg = messages.find(m => m.id === selectedMessage)
+            return selectedMsg && selectedMsg.userId === userId.current
+          })() && (
+            <button
+              onClick={() => {
+                const msg = messages.find(m => m.id === selectedMessage)
+                if (msg) {
+                  setEditingMessageId(msg.id)
+                  setEditText(msg.text)
+                }
+                setShowContextMenu(false)
+                setSelectedMessage(null)
+              }}
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
+            >
+              Изменить
+            </button>
+          )}
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1029,6 +1191,75 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
+      {/* File Preview (маленькое над полем ввода) */}
+      {showFilePreview && previewFile && (
+        <div 
+          className="relative z-10 px-3 py-2 flex items-center gap-2"
+          style={{ 
+            backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
+          }}
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {previewFile.type.startsWith('image/') && (
+              <img src={previewFile.url} alt="Preview" className="w-12 h-12 object-cover rounded" />
+            )}
+            {previewFile.type.startsWith('video/') && (
+              <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-300">Video</div>
+            )}
+            {previewFile.type.startsWith('audio/') && (
+              <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-300">Audio</div>
+            )}
+            {!previewFile.type.match(/^(image|video|audio)\//) && (
+              <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-300">File</div>
+            )}
+            <span className="text-sm text-gray-300 truncate">{previewFile.name}</span>
+          </div>
+          <button
+            onClick={() => {
+              setShowFilePreview(false)
+              setPreviewFile(null)
+              setPreviewText('')
+            }}
+            className="p-1 hover:bg-white/10 rounded"
+          >
+            <X size={16} className="text-gray-400" />
+          </button>
+        </div>
+      )}
+
+      {/* Toolbar (панель инструментов) */}
+      {showToolbar && (
+        <div 
+          className="relative z-10 px-3 py-2 flex items-center gap-2 border-b border-gray-700"
+          style={{ 
+            backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
+          }}
+        >
+          <button
+            onClick={() => {
+              if (spoilerMode === 'none') {
+                // Открывающий тэг спойлера
+                const title = prompt('Введите название спойлера:', 'Спойлер')
+                if (title !== null) {
+                  setInputText(prev => prev + `[spoiler=${title}]`)
+                  setSpoilerMode('opening')
+                }
+              } else if (spoilerMode === 'opening') {
+                // Закрывающий тэг спойлера
+                setInputText(prev => prev + '[/spoiler]')
+                setSpoilerMode('none')
+              }
+            }}
+            className={`px-3 py-1 rounded text-sm flex items-center gap-1 ${
+              spoilerMode === 'opening' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            {spoilerMode === 'opening' ? <EyeOff size={14} /> : <Eye size={14} />}
+            {spoilerMode === 'opening' ? 'Закрыть спойлер' : 'Спойлер'}
+          </button>
+        </div>
+      )}
+
       {/* Input Bar */}
       <div 
         className="relative z-10 px-3 py-3 flex items-center gap-2"
@@ -1051,6 +1282,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
        <textarea
   value={inputText}
   onChange={(e) => setInputText(e.target.value)}
+  onFocus={() => setShowToolbar(true)}
   placeholder="Сообщение..."
   className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400 resize-none"
   rows={2}
@@ -1059,14 +1291,24 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      sendMessage();
+      if (showFilePreview && previewFile) {
+        sendMessageWithFile();
+      } else {
+        sendMessage();
+      }
     }
   }}
 />
 
 <button
-  type="button" // обязательно, чтобы кнопка не триггерила submit формы по умолчанию
-  onClick={sendMessage}
+  type="button"
+  onClick={() => {
+    if (showFilePreview && previewFile) {
+      sendMessageWithFile();
+    } else {
+      sendMessage();
+    }
+  }}
   className="p-2 rounded-full"
   style={{ backgroundColor: settings.iconColor }}
 >
@@ -1209,62 +1451,118 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* File Preview Modal */}
-      {showFilePreview && previewFile && (
+      {/* Color Picker Modal */}
+      {showColorPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">Выбор цвета</h2>
+              <button onClick={() => setShowColorPicker(false)}>
+                <X size={24} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-300 block mb-2">Цвет имени</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={userNameColor}
+                    onChange={(e) => setUserNameColor(e.target.value)}
+                    className="w-12 h-10 rounded cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={userNameColor}
+                    onChange={(e) => setUserNameColor(e.target.value)}
+                    className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm"
+                  />
+                </div>
+                {/* Радужный индикатор */}
+                <div 
+                  className="mt-2 h-6 rounded cursor-pointer"
+                  style={{ background: 'linear-gradient(to right, #ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0000ff, #8000ff, #ff00ff)' }}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const x = e.clientX - rect.left
+                    const percent = x / rect.width
+                    const hue = Math.round(percent * 360)
+                    setUserNameColor(`hsl(${hue}, 100%, 50%)`)
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-300 block mb-2">Цвет фона сообщений</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={userBgColor}
+                    onChange={(e) => setUserBgColor(e.target.value)}
+                    className="w-12 h-10 rounded cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={userBgColor}
+                    onChange={(e) => setUserBgColor(e.target.value)}
+                    className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm"
+                  />
+                </div>
+                {/* Превью фона */}
+                <div 
+                  className="mt-2 p-3 rounded text-white text-sm"
+                  style={{ backgroundColor: hexToRgba(userBgColor, 0.8) }}
+                >
+                  <span style={{ color: userNameColor }}>{displayName}</span>
+                  <div className="mt-1">Пример сообщения</div>
+                </div>
+              </div>
+              <button
+                onClick={saveColorPreferences}
+                className="w-full px-4 py-2 rounded text-sm font-medium text-white"
+                style={{ backgroundColor: settings.iconColor }}
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Message Modal */}
+      {editingMessageId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Предпросмотр</h2>
+              <h2 className="text-xl font-bold text-white">Редактирование</h2>
               <button onClick={() => {
-                setShowFilePreview(false)
-                setPreviewFile(null)
-                setPreviewText('')
+                setEditingMessageId(null)
+                setEditText('')
               }}>
                 <X size={24} className="text-gray-400" />
               </button>
             </div>
-            <div className="mb-4">
-              {previewFile.type.startsWith('image/') && (
-                <img src={previewFile.url} alt="Preview" className="max-w-full rounded" />
-              )}
-              {previewFile.type.startsWith('video/') && (
-                <video controls className="max-w-full rounded">
-                  <source src={previewFile.url} type={previewFile.type} />
-                </video>
-              )}
-              {previewFile.type.startsWith('audio/') && (
-                <audio controls className="w-full" src={previewFile.url} />
-              )}
-              {!previewFile.type.match(/^(image|video|audio)\//) && (
-                <div className="text-gray-300 text-sm">
-                  📎 {previewFile.name}
-                </div>
-              )}
-            </div>
             <textarea
-              value={previewText}
-              onChange={(e) => setPreviewText(e.target.value)}
-              placeholder="Добавить текст..."
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
               className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm outline-none mb-4"
-              rows={3}
+              rows={5}
             />
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setShowFilePreview(false)
-                  setPreviewFile(null)
-                  setPreviewText('')
+                  setEditingMessageId(null)
+                  setEditText('')
                 }}
                 className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
               >
                 Отмена
               </button>
               <button
-                onClick={sendMessageWithFile}
+                onClick={handleEditSave}
                 className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
                 style={{ backgroundColor: settings.iconColor }}
               >
-                Отправить
+                Сохранить
               </button>
             </div>
           </div>

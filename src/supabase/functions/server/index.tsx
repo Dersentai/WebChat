@@ -40,7 +40,7 @@ app.get('/make-server-98c5d13a/messages', async (c) => {
 app.post('/make-server-98c5d13a/messages', async (c) => {
   try {
     const body = await c.req.json()
-    const { id, username, text, timestamp, replyTo, fileUrl, fileType, fileName } = body
+    const { id, username, text, timestamp, replyTo, fileUrl, fileType, fileName, userId, nameColor, bgColor } = body
     
     const message = {
       id,
@@ -50,7 +50,10 @@ app.post('/make-server-98c5d13a/messages', async (c) => {
       replyTo: replyTo || null,
       fileUrl: fileUrl || null,
       fileType: fileType || null,
-      fileName: fileName || null
+      fileName: fileName || null,
+      userId: userId || null,
+      nameColor: nameColor || '#ebef00',
+      bgColor: bgColor || '#003a21'
     }
     
     await kv.set(`msg_${id}`, message)
@@ -58,6 +61,33 @@ app.post('/make-server-98c5d13a/messages', async (c) => {
     return c.json({ success: true, message })
   } catch (error) {
     console.log('Error creating message:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
+// Edit message
+app.post('/make-server-98c5d13a/messages/edit', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { id, text, userId } = body
+    
+    const message = await kv.get(`msg_${id}`)
+    if (!message) {
+      return c.json({ success: false, error: 'Сообщение не найдено' }, 404)
+    }
+    
+    // Check if the user is the author (by userId)
+    if (message.userId !== userId) {
+      return c.json({ success: false, error: 'Вы не можете редактировать это сообщение' }, 403)
+    }
+    
+    message.text = text
+    message.edited = true
+    await kv.set(`msg_${id}`, message)
+    
+    return c.json({ success: true, message })
+  } catch (error) {
+    console.log('Error editing message:', error)
     return c.json({ success: false, error: String(error) }, 500)
   }
 })
@@ -179,7 +209,7 @@ app.get('/make-server-98c5d13a/stats', async (c) => {
 app.post('/make-server-98c5d13a/presence', async (c) => {
   try {
     const body = await c.req.json()
-    const { userId, isNewVisit } = body
+    const { userId, isNewVisit, username, leave } = body
     
     const stats = await kv.get('chat_stats') || { views: 0, onlineUsers: [] }
     
@@ -188,27 +218,40 @@ app.post('/make-server-98c5d13a/presence', async (c) => {
       stats.views = (stats.views || 0) + 1
     }
     
-    // Update user's last seen
     const now = Date.now()
+    
+    // Handle leave event
+    if (leave) {
+      stats.onlineUsers = stats.onlineUsers.filter((u: any) => u.id !== userId)
+      await kv.set('chat_stats', stats)
+      return c.json({ success: true })
+    }
+    
+    // Update user's last seen and username
     const userIndex = stats.onlineUsers.findIndex((u: any) => u.id === userId)
     
     if (userIndex >= 0) {
       stats.onlineUsers[userIndex].lastSeen = now
+      stats.onlineUsers[userIndex].username = username || 'гость'
     } else {
-      stats.onlineUsers.push({ id: userId, lastSeen: now })
+      stats.onlineUsers.push({ id: userId, lastSeen: now, username: username || 'гость' })
     }
     
-    // Clean up old users
+    // Clean up old users (older than 15 seconds)
     stats.onlineUsers = stats.onlineUsers.filter(
-      (user: any) => now - user.lastSeen < 10000
+      (user: any) => now - user.lastSeen < 15000
     )
     
     await kv.set('chat_stats', stats)
     
+    // Get list of online usernames
+    const onlineUsernames = stats.onlineUsers.map((u: any) => u.username)
+    
     return c.json({ 
       success: true,
       views: stats.views,
-      onlineCount: stats.onlineUsers.length
+      onlineCount: stats.onlineUsers.length,
+      onlineUsernames
     })
   } catch (error) {
     console.log('Error updating presence:', error)
