@@ -143,7 +143,6 @@ const markViewCounted = (): void => {
       })
       const data = await res.json()
       if (data.success) {
-        console.log('[v0] Messages received, first msg:', data.messages[0])
         setMessages(data.messages)
       }
     } catch (error) {
@@ -197,7 +196,6 @@ const updatePresence = async () => {
       setOnlineCount(data.onlineCount)
       setViewCount(data.views)
       if (data.onlineUsernames) {
-        console.log('[v0] Online usernames received:', data.onlineUsernames)
         setOnlineUsers(data.onlineUsernames)
       }
 
@@ -408,13 +406,6 @@ useEffect(() => {
         bgColor: displayName !== 'гость' ? userBgColor : '#003a21'
       }
       
-      console.log('[v0] Sending message:', { 
-        username: displayName, 
-        userId: message.userId, 
-        nameColor: message.nameColor, 
-        bgColor: message.bgColor 
-      })
-
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
         headers: {
@@ -1086,11 +1077,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         >
           {/* Индикатор онлайн/оффлайн */}
           <div className="absolute top-2 right-2">
-            {(() => {
-              const isOnline = onlineUsers.includes(msg.username)
-              if (idx === 0) console.log('[v0] Online check for first msg:', { username: msg.username, onlineUsers, isOnline })
-              return isOnline
-            })() ? (
+            {onlineUsers.includes(msg.username) ? (
               <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_2px_rgba(34,197,94,0.6)]" />
             ) : (
               <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_4px_1px_rgba(239,68,68,0.5)]" />
@@ -1140,17 +1127,9 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             Ответить
           </button>
           {/* Показывать "Изменить" только для своих сообщений авторизованным пользователям */}
-          {(() => {
+          {displayName !== 'гость' && (() => {
             const selectedMsg = messages.find(m => m.id === selectedMessage)
-            console.log('[v0] Edit check:', {
-              displayName,
-              isGuest: displayName === 'гость',
-              selectedMsg,
-              msgUserId: selectedMsg?.userId,
-              currentUserId: userId.current,
-              match: selectedMsg?.userId === userId.current
-            })
-            return displayName !== 'гость' && selectedMsg && selectedMsg.userId === userId.current
+            return selectedMsg && selectedMsg.userId === userId.current
           })() && (
             <button
               onClick={() => {
@@ -1240,7 +1219,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             onClick={() => {
               setShowFilePreview(false)
               setPreviewFile(null)
-              setPreviewText('')
             }}
             className="p-1 hover:bg-white/10 rounded"
           >
