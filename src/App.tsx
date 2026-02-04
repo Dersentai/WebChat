@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -11,7 +11,8 @@ interface Message {
   fileUrl?: string | null
   fileType?: string | null
   fileName?: string | null
-}
+  edited?: boolean
+  }
 
 interface Settings {
   backgroundImage: string | null
@@ -104,6 +105,7 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -473,15 +475,58 @@ setInputText('')
   }
 
   // Reply to message
-  const handleReply = () => {
+const handleReply = () => {
+  const msg = messages.find(m => m.id === selectedMessage)
+  if (msg) {
+  setReplyingTo(msg)
+  }
+  setShowContextMenu(false)
+  setSelectedMessage(null)
+  }
+
+  // Edit message - only for own messages
+  const handleEdit = () => {
     const msg = messages.find(m => m.id === selectedMessage)
-    if (msg) {
-      setReplyingTo(msg)
+    if (msg && msg.username === displayName) {
+      setEditingMessage(msg)
+      setInputText(msg.text)
     }
     setShowContextMenu(false)
     setSelectedMessage(null)
   }
 
+  // Save edited message
+  const saveEditedMessage = async () => {
+    if (!editingMessage || !inputText.trim()) return
+    
+    try {
+      const res = await fetch(`${API_URL}/messages`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingMessage.id,
+          text: inputText.trim()
+        })
+      })
+      
+      if (res.ok) {
+        setEditingMessage(null)
+        setInputText('')
+        setSpoilerOpen(false)
+        fetchMessages()
+      }
+    } catch (error) {
+      console.error('Error editing message:', error)
+    }
+  }
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingMessage(null)
+    setInputText('')
+    setSpoilerOpen(false)
+  }
+  
   // Delete messages
   const handleDelete = () => {
     setDeleteMode(true)
@@ -1129,6 +1174,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               hour: '2-digit',
               minute: '2-digit'
             })}
+            {msg.edited && <span className="ml-1 italic">(ред.)</span>}
           </div>
         </div>
       </div>
@@ -1154,6 +1200,19 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
+          {/* Edit button - only show for own messages */}
+          {(() => {
+            const msg = messages.find(m => m.id === selectedMessage)
+            return msg && msg.username === displayName ? (
+              <button
+                onClick={handleEdit}
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
+              >
+                <Pencil size={14} />
+                Изменить
+              </button>
+            ) : null
+          })()}
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1188,8 +1247,21 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
+{/* Edit Bar */}
+      {editingMessage && (
+        <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
+          <Pencil size={16} className="text-yellow-400" />
+          <div className="flex-1 text-sm text-gray-300">
+            Редактирование сообщения
+          </div>
+          <button onClick={cancelEdit} className="p-1">
+            <X size={16} className="text-gray-400" />
+          </button>
+        </div>
+      )}
+
 {/* Reply Bar */}
-      {replyingTo && (
+      {replyingTo && !editingMessage && (
         <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
           <div className="flex-1 text-sm text-gray-300">
             Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
@@ -1214,7 +1286,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             title="Нажмите чтобы вставить ссылку на файл"
           >
             {previewFile.type.startsWith('image/') && (
-              <img src={previewFile.url} alt="Preview" className="h-16 w-16 object-cover rounded" />
+              <img src={previewFile.url} alt="Preview" className="h-16 w-16 object-cover rounded" style={{ maxWidth: '64px', maxHeight: '64px' }} />
             )}
             {previewFile.type.startsWith('video/') && (
               <div className="h-16 w-16 bg-gray-700 rounded flex items-center justify-center">
@@ -1309,7 +1381,9 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (showFilePreview && previewFile) {
+      if (editingMessage) {
+        saveEditedMessage();
+      } else if (showFilePreview && previewFile) {
         sendMessageWithFile();
       } else {
         sendMessage();
@@ -1321,16 +1395,18 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 <button
   type="button"
   onClick={() => {
-    if (showFilePreview && previewFile) {
+    if (editingMessage) {
+      saveEditedMessage();
+    } else if (showFilePreview && previewFile) {
       sendMessageWithFile();
     } else {
       sendMessage();
     }
   }}
   className="p-2 rounded-full"
-  style={{ backgroundColor: settings.iconColor }}
+  style={{ backgroundColor: editingMessage ? '#eab308' : settings.iconColor }}
 >
-  <Send size={18} className="text-white" />
+  {editingMessage ? <Check size={18} className="text-white" /> : <Send size={18} className="text-white" />}
 </button>
       </div>
 
@@ -1347,7 +1423,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <div className="text-gray-300 space-y-2 text-sm">
               <p>🌐 Онлайн чат без правил и регистрации.</p>
               <p>👤Для вхола можно использовать имя. Для сброса имени просто нажмите "войти".</p>
-              <p>💬 Для ответа на сообщение нажмите и удерживайте на него.</p>
+              <p>💬 Для ответа на со��бщение нажмите и удерживайте на него.</p>
               <p>Доступна отправка файлов в чат. Для отправки кликабельной ссылки на файл/информацию - введите ссылку в кавычках.</p>
               <p>🔆🔆🔆</p>
             </div>

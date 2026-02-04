@@ -82,6 +82,34 @@ app.post('/make-server-98c5d13a/messages/delete', async (c) => {
   }
 })
 
+// Edit message
+app.put('/make-server-98c5d13a/messages', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { id, text } = body
+    
+    // Get existing message
+    const existingMessage = await kv.get(`msg_${id}`)
+    if (!existingMessage) {
+      return c.json({ success: false, error: 'Message not found' }, 404)
+    }
+    
+    // Update the message text
+    const updatedMessage = {
+      ...existingMessage,
+      text,
+      edited: true
+    }
+    
+    await kv.set(`msg_${id}`, updatedMessage)
+    
+    return c.json({ success: true, message: updatedMessage })
+  } catch (error) {
+    console.log('Error editing message:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
 // Upload file
 app.post('/make-server-98c5d13a/upload', async (c) => {
   try {
