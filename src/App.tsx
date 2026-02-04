@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, Pencil } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -407,6 +407,59 @@ useEffect(() => {
     }
     setShowContextMenu(false)
     setSelectedMessage(null)
+  }
+
+  // Start editing message
+  const handleEdit = () => {
+    const msg = messages.find(m => m.id === selectedMessage)
+    if (msg) {
+      setEditingMessage(msg)
+      setEditText(msg.text)
+    }
+    setShowContextMenu(false)
+    setSelectedMessage(null)
+  }
+
+  // Save edited message
+  const saveEditedMessage = async () => {
+    if (!editingMessage || !editText.trim()) return
+
+    try {
+      const res = await fetch(`${API_URL}/messages/${editingMessage.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`
+        },
+        body: JSON.stringify({
+          text: editText.trim(),
+          username: displayName
+        })
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        // Обновляем локальное состояние немедленно
+        setMessages(prev => prev.map(m => 
+          m.id === editingMessage.id 
+            ? { ...m, text: editText.trim(), edited: true, editedAt: Date.now() }
+            : m
+        ))
+        setEditingMessage(null)
+        setEditText('')
+      } else {
+        alert(data.error || 'Ошибка редактирования')
+      }
+    } catch (error) {
+      console.error('Error editing message:', error)
+      alert('Ошибка редактирования')
+    }
+  }
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingMessage(null)
+    setEditText('')
   }
 
   // Delete messages
@@ -962,6 +1015,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               hour: '2-digit',
               minute: '2-digit'
             })}
+            {msg.edited && <span className="ml-2 text-gray-500">(изм.)</span>}
           </div>
         </div>
       </div>
@@ -987,6 +1041,18 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
+          {/* Показываем "Изменить" только для авторизованных пользователей и только для их собственных сообщений */}
+          {displayName !== 'гость' && (() => {
+            const msg = messages.find(m => m.id === selectedMessage)
+            return msg && msg.username === displayName
+          })() && (
+            <button
+              onClick={handleEdit}
+              className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
+            >
+              Изменить
+            </button>
+          )}
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1092,6 +1158,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               <p>🌐 Онлайн чат без правил и регистрации.</p>
               <p>👤Для вхола можно использовать имя. Для сброса имени просто нажмите "войти".</p>
               <p>💬 Для ответа на сообщение нажмите и удерживайте на него.</p>
+              <p>Войдите под именем, чтобы редактировать свои сообщения (долгое нажатие на свое сообщение).</p>
               <p>Доступна отправка файлов в чат. Для отправки кликабельной ссылки на файл/информацию - введите ссылку в кавычках.</p>
               <p>🔆🔆🔆</p>
             </div>
@@ -1207,6 +1274,43 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
                 style={{ backgroundColor: settings.iconColor }}
               >
                 Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Message Modal */}
+      {editingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">Редактировать сообщение</h2>
+              <button onClick={cancelEdit}>
+                <X size={24} className="text-gray-400" />
+              </button>
+            </div>
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              placeholder="Введите новый текст..."
+              className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm outline-none mb-4"
+              rows={4}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={cancelEdit}
+                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={saveEditedMessage}
+                className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
+                style={{ backgroundColor: settings.iconColor }}
+              >
+                Сохранить
               </button>
             </div>
           </div>
