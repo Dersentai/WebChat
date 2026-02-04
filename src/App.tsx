@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -20,6 +20,60 @@ interface Settings {
   panelOpacity: number
 }
 
+// Spoiler component
+function SpoilerBlock({ title, content, fileUrl, fileType, fileName }: { 
+  title: string
+  content: string
+  fileUrl?: string | null
+  fileType?: string | null
+  fileName?: string | null
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  
+  // Check if content contains file link
+  const fileLinkMatch = content.match(/\[file:([^\]]+)\]/)
+  const hasFileLink = fileLinkMatch && fileName === fileLinkMatch[1]
+  const textContent = content.replace(/\[file:[^\]]+\]/g, '').trim()
+  
+  return (
+    <div className="my-1 rounded bg-black/30 overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/5 transition-colors"
+      >
+        {isOpen ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+        <EyeOff size={14} className="text-gray-400" />
+        <span className="text-sm text-gray-300">{title || 'Спойлер'}</span>
+      </button>
+      {isOpen && (
+        <div className="px-3 py-2 border-t border-white/10">
+          {textContent && <div className="text-white break-words whitespace-pre-wrap">{textContent}</div>}
+          {hasFileLink && fileUrl && (
+            <div className="mt-2">
+              {fileType?.startsWith('image/') && (
+                <img src={fileUrl} alt={fileName || 'Image'} className="max-w-full rounded" style={{ maxHeight: '300px' }} />
+              )}
+              {fileType?.startsWith('video/') && (
+                <video controls className="max-w-full rounded" style={{ maxHeight: '300px' }}>
+                  <source src={fileUrl} type={fileType} />
+                </video>
+              )}
+              {fileType?.startsWith('audio/') && (
+                <audio controls className="w-full" src={fileUrl} />
+              )}
+              {!fileType?.match(/^(image|video|audio)\//) && (
+                <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
+                  {fileName || 'Скачать файл'}
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [username, setUsername] = useState('')
@@ -30,7 +84,6 @@ export default function App() {
   const [showSetTheme, setShowSetTheme] = useState(false)
   const [showFilePreview, setShowFilePreview] = useState(false)
   const [previewFile, setPreviewFile] = useState<{ url: string, type: string, name: string } | null>(null)
-  const [previewText, setPreviewText] = useState('')
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null)
   const [showContextMenu, setShowContextMenu] = useState(false)
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
@@ -49,6 +102,8 @@ export default function App() {
   const [themePanel, setThemePanel] = useState('#1a1a1a')
   const [themeIcon, setThemeIcon] = useState('#64b5f6')
   const [themeOpacity, setThemeOpacity] = useState(0.85)
+  const [showToolbar, setShowToolbar] = useState(false)
+  const [spoilerOpen, setSpoilerOpen] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -243,7 +298,7 @@ useEffect(() => {
     }
   }
 
-  // Handle file selection
+  // Handle file selection - now shows small preview above input
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -256,9 +311,29 @@ useEffect(() => {
         name: file.name
       })
       setShowFilePreview(true)
-      setPreviewText('')
     }
     reader.readAsDataURL(file)
+  }
+
+  // Insert file link into input text at cursor position
+  const insertFileLink = () => {
+    if (!previewFile) return
+    const linkText = `[file:${previewFile.name}]`
+    setInputText(prev => prev + linkText)
+  }
+
+  // Handle spoiler toggle
+  const handleSpoilerClick = () => {
+    if (!spoilerOpen) {
+      const title = prompt('Введите название спойлера:')
+      if (title !== null) {
+        setInputText(prev => prev + `[spoiler:${title}]`)
+        setSpoilerOpen(true)
+      }
+    } else {
+      setInputText(prev => prev + '[/spoiler]')
+      setSpoilerOpen(false)
+    }
   }
 
   // Send message with file
@@ -286,17 +361,17 @@ useEffect(() => {
         return
       }
 
-      // Send message
-      const message: Message = {
-        id: Date.now().toString(),
-        username: displayName,
-        text: previewText.trim(),
-        timestamp: Date.now(),
-        replyTo: replyingTo?.id || null,
-        fileUrl: uploadData.fileUrl,
-        fileType: uploadData.fileType,
-        fileName: uploadData.fileName
-      }
+// Send message
+  const message: Message = {
+  id: Date.now().toString(),
+  username: displayName,
+  text: inputText.trim(),
+  timestamp: Date.now(),
+  replyTo: replyingTo?.id || null,
+  fileUrl: uploadData.fileUrl,
+  fileType: uploadData.fileType,
+  fileName: uploadData.fileName
+  }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -307,11 +382,12 @@ useEffect(() => {
         body: JSON.stringify(message)
       })
 
-      setShowFilePreview(false)
-      setPreviewFile(null)
-      setPreviewText('')
-      setReplyingTo(null)
-      fetchMessages()
+setShowFilePreview(false)
+  setPreviewFile(null)
+  setInputText('')
+  setReplyingTo(null)
+  setSpoilerOpen(false)
+  fetchMessages()
     } catch (error) {
       console.error('Error sending message with file:', error)
     }
@@ -354,10 +430,11 @@ useEffect(() => {
         body: JSON.stringify(message)
       })
 
-      setInputText('')
-      setReplyingTo(null)
-      fetchMessages()
-    } catch (error) {
+setInputText('')
+  setReplyingTo(null)
+  setSpoilerOpen(false)
+  fetchMessages()
+  } catch (error) {
       console.error('Error sending message:', error)
     }
   }
@@ -756,11 +833,105 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       )
     }
 
+    // Parse and render spoilers and file links in text
+    const renderTextWithSpoilersAndLinks = (text: string, fileUrl?: string | null, fileType?: string | null, fileName?: string | null) => {
+      const spoilerRegex = /\[spoiler:([^\]]*)\]([\s\S]*?)\[\/spoiler\]/g
+      const fileLinkRegex = /\[file:([^\]]+)\]/g
+      
+      let result: React.ReactNode[] = []
+      let lastIndex = 0
+      let match
+      let tempText = text
+      
+      // First, handle spoilers
+      const parts: React.ReactNode[] = []
+      let partLastIndex = 0
+      
+      while ((match = spoilerRegex.exec(text)) !== null) {
+        // Add text before spoiler
+        if (match.index > partLastIndex) {
+          parts.push(text.slice(partLastIndex, match.index))
+        }
+        
+        const spoilerTitle = match[1]
+        const spoilerContent = match[2]
+        const spoilerKey = `spoiler-${match.index}`
+        
+        parts.push(
+          <SpoilerBlock key={spoilerKey} title={spoilerTitle} content={spoilerContent} fileUrl={fileUrl} fileType={fileType} fileName={fileName} />
+        )
+        
+        partLastIndex = match.index + match[0].length
+      }
+      
+      // Add remaining text after last spoiler
+      if (partLastIndex < text.length) {
+        parts.push(text.slice(partLastIndex))
+      }
+      
+      // If no spoilers found, process file links
+      if (parts.length === 0) {
+        parts.push(text)
+      }
+      
+      // Process file links in text parts
+      return parts.map((part, idx) => {
+        if (typeof part === 'string') {
+          // Check for file links
+          const linkParts: React.ReactNode[] = []
+          let linkLastIndex = 0
+          let linkMatch
+          
+          while ((linkMatch = fileLinkRegex.exec(part)) !== null) {
+            if (linkMatch.index > linkLastIndex) {
+              linkParts.push(part.slice(linkLastIndex, linkMatch.index))
+            }
+            
+            const linkedFileName = linkMatch[1]
+            // If this file link matches our attached file, render it
+            if (fileUrl && fileName === linkedFileName) {
+              linkParts.push(
+                <span key={`link-${linkMatch.index}`} className="inline-block my-1">
+                  {fileType?.startsWith('image/') && (
+                    <img src={fileUrl} alt={fileName || 'Image'} className="max-w-full rounded" style={{ maxHeight: '300px' }} />
+                  )}
+                  {fileType?.startsWith('video/') && (
+                    <video controls className="max-w-full rounded" style={{ maxHeight: '300px' }}>
+                      <source src={fileUrl} type={fileType} />
+                    </video>
+                  )}
+                  {fileType?.startsWith('audio/') && (
+                    <audio controls className="w-full" src={fileUrl} />
+                  )}
+                  {!fileType?.match(/^(image|video|audio)\//) && (
+                    <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
+                      {fileName || 'Скачать файл'}
+                    </a>
+                  )}
+                </span>
+              )
+            } else {
+              linkParts.push(linkMatch[0])
+            }
+            
+            linkLastIndex = linkMatch.index + linkMatch[0].length
+          }
+          
+          if (linkLastIndex < part.length) {
+            linkParts.push(part.slice(linkLastIndex))
+          }
+          
+          return linkParts.length > 0 ? <span key={idx}>{linkParts}</span> : part
+        }
+        return part
+      })
+    }
+
     // Regular text or uploaded file
     return (
       <div>
-        {msg.text && <div className="break-words whitespace-pre-wrap">{msg.text}</div>}
-        {msg.fileUrl && (
+        {msg.text && <div className="break-words whitespace-pre-wrap">{renderTextWithSpoilersAndLinks(msg.text, msg.fileUrl, msg.fileType, msg.fileName)}</div>}
+        {msg.fileUrl && !msg.text?.includes(`[file:${msg.fileName}]`) && (
           <div className="mt-2">
             {msg.fileType?.startsWith('image/') && (
               <img src={msg.fileUrl} alt={msg.fileName || 'Image'} className="max-w-full rounded" style={{ maxHeight: '300px' }} />
@@ -1029,6 +1200,76 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
+      {/* Small File Preview above input (Telegram style) */}
+      {showFilePreview && previewFile && (
+        <div 
+          className="relative z-10 px-3 py-2 flex items-center gap-2"
+          style={{ 
+            backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
+          }}
+        >
+          <div 
+            className="relative cursor-pointer group"
+            onClick={insertFileLink}
+            title="Нажмите чтобы вставить ссылку на файл"
+          >
+            {previewFile.type.startsWith('image/') && (
+              <img src={previewFile.url} alt="Preview" className="h-16 w-16 object-cover rounded" />
+            )}
+            {previewFile.type.startsWith('video/') && (
+              <div className="h-16 w-16 bg-gray-700 rounded flex items-center justify-center">
+                <video src={previewFile.url} className="h-16 w-16 object-cover rounded" muted />
+              </div>
+            )}
+            {previewFile.type.startsWith('audio/') && (
+              <div className="h-16 w-16 bg-gray-700 rounded flex items-center justify-center text-2xl">
+                🎵
+              </div>
+            )}
+            {!previewFile.type.match(/^(image|video|audio)\//) && (
+              <div className="h-16 w-16 bg-gray-700 rounded flex items-center justify-center text-2xl">
+                📎
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/50 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              <span className="text-white text-xs text-center px-1">Вставить ссылку</span>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-white truncate">{previewFile.name}</div>
+            <div className="text-xs text-gray-400">Нажмите на превью для вставки ссылки</div>
+          </div>
+          <button
+            onClick={() => {
+              setShowFilePreview(false)
+              setPreviewFile(null)
+            }}
+            className="p-1"
+          >
+            <X size={16} className="text-gray-400" />
+          </button>
+        </div>
+      )}
+
+      {/* Toolbar (appears on focus) */}
+      {showToolbar && (
+        <div 
+          className="relative z-10 px-3 py-1 flex items-center gap-2"
+          style={{ 
+            backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
+          }}
+        >
+          <button
+            onClick={handleSpoilerClick}
+            className={`p-2 rounded hover:bg-white/10 flex items-center gap-1 ${spoilerOpen ? 'bg-white/20' : ''}`}
+            title={spoilerOpen ? 'Закрыть спойлер' : 'Добавить спойлер'}
+          >
+            <EyeOff size={16} style={{ color: settings.iconColor }} />
+            <span className="text-xs text-gray-300">{spoilerOpen ? '[/spoiler]' : 'Спойлер'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Input Bar */}
       <div 
         className="relative z-10 px-3 py-3 flex items-center gap-2"
@@ -1051,6 +1292,15 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
        <textarea
   value={inputText}
   onChange={(e) => setInputText(e.target.value)}
+  onFocus={() => setShowToolbar(true)}
+  onBlur={(e) => {
+    // Delay hiding to allow clicking toolbar buttons
+    setTimeout(() => {
+      if (!document.activeElement?.closest('.toolbar-area')) {
+        setShowToolbar(false)
+      }
+    }, 200)
+  }}
   placeholder="Сообщение..."
   className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400 resize-none"
   rows={2}
@@ -1059,14 +1309,24 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      sendMessage();
+      if (showFilePreview && previewFile) {
+        sendMessageWithFile();
+      } else {
+        sendMessage();
+      }
     }
   }}
 />
 
 <button
-  type="button" // обязательно, чтобы кнопка не триггерила submit формы по умолчанию
-  onClick={sendMessage}
+  type="button"
+  onClick={() => {
+    if (showFilePreview && previewFile) {
+      sendMessageWithFile();
+    } else {
+      sendMessage();
+    }
+  }}
   className="p-2 rounded-full"
   style={{ backgroundColor: settings.iconColor }}
 >
@@ -1203,68 +1463,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
                 style={{ backgroundColor: settings.iconColor }}
               >
                 Применить
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* File Preview Modal */}
-      {showFilePreview && previewFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Предпросмотр</h2>
-              <button onClick={() => {
-                setShowFilePreview(false)
-                setPreviewFile(null)
-                setPreviewText('')
-              }}>
-                <X size={24} className="text-gray-400" />
-              </button>
-            </div>
-            <div className="mb-4">
-              {previewFile.type.startsWith('image/') && (
-                <img src={previewFile.url} alt="Preview" className="max-w-full rounded" />
-              )}
-              {previewFile.type.startsWith('video/') && (
-                <video controls className="max-w-full rounded">
-                  <source src={previewFile.url} type={previewFile.type} />
-                </video>
-              )}
-              {previewFile.type.startsWith('audio/') && (
-                <audio controls className="w-full" src={previewFile.url} />
-              )}
-              {!previewFile.type.match(/^(image|video|audio)\//) && (
-                <div className="text-gray-300 text-sm">
-                  📎 {previewFile.name}
-                </div>
-              )}
-            </div>
-            <textarea
-              value={previewText}
-              onChange={(e) => setPreviewText(e.target.value)}
-              placeholder="Добавить текст..."
-              className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm outline-none mb-4"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setShowFilePreview(false)
-                  setPreviewFile(null)
-                  setPreviewText('')
-                }}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={sendMessageWithFile}
-                className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
-                style={{ backgroundColor: settings.iconColor }}
-              >
-                Отправить
               </button>
             </div>
           </div>
