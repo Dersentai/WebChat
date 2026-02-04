@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 // Компонент спойлера
@@ -74,16 +74,14 @@ export default function App() {
   const [bgUrl, setBgUrl] = useState('')
   const [themePanel, setThemePanel] = useState('#1a1a1a')
   const [themeIcon, setThemeIcon] = useState('#64b5f6')
-  const [themeOpacity, setThemeOpacity] = useState(0.85)
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([])
+const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [userNameColor, setUserNameColor] = useState('#ebef00')
   const [userBgColor, setUserBgColor] = useState('#003a21')
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [showToolbar, setShowToolbar] = useState(false)
-  const [spoilerMode, setSpoilerMode] = useState<'none' | 'opening' | 'closing'>('none')
-  const [spoilerTitle, setSpoilerTitle] = useState('')
+  const [spoilerMode, setSpoilerMode] = useState<'none' | 'opening'>('none')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -194,10 +192,7 @@ const updatePresence = async () => {
     const data = await res.json()
     if (data.success) {
       setOnlineCount(data.onlineCount)
-      setViewCount(data.views)
-      if (data.onlineUsernames) {
-        setOnlineUsers(data.onlineUsernames)
-      }
+setViewCount(data.views)
 
       hasVisited.current = true
       try { localStorage.setItem('chatHasVisited', 'true') } catch (e) {}
@@ -1075,16 +1070,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-          {/* Индикатор онлайн/оффлайн */}
-          <div className="absolute top-2 right-2">
-            {onlineUsers.includes(msg.username) ? (
-              <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_2px_rgba(34,197,94,0.6)]" />
-            ) : (
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_4px_1px_rgba(239,68,68,0.5)]" />
-            )}
-          </div>
-          
-          <div className="text-xs font-medium mb-1 pr-4" style={{ color: msg.nameColor || '#ebef00' }}>
+          <div className="text-xs font-medium mb-1" style={{ color: msg.nameColor || '#ebef00' }}>
             {msg.username}
           </div>
 
