@@ -496,13 +496,6 @@ const message: Message = {
   const messageId = editingMessageId
   const currentUsername = displayName
   
-  // Сначала обновляем локально для мгновенной обратной связи
-  setMessages(prev => prev.map(msg => 
-  msg.id === messageId 
-  ? { ...msg, text: newText }
-  : msg
-  ))
-  
   setEditingMessageId(null)
   setEditingText('')
   
@@ -522,7 +515,14 @@ const message: Message = {
   
   const result = await response.json()
   
-  if (!result.success) {
+  if (result.success) {
+  // Обновляем локально только после успешного сохранения на сервере
+  setMessages(prev => prev.map(msg => 
+  msg.id === messageId 
+  ? { ...msg, text: newText }
+  : msg
+  ))
+  } else {
   // Если ошибка - перезагружаем сообщения с сервера
   fetchMessages()
   }
@@ -1445,7 +1445,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
   />
   
   <button
-  type="button" // обязательно, чтобы кнопка не триггерила submit формы по умолчанию
+  type="button" // обязательно, чтобы кнопка не тригг��рила submit формы по умолчанию
   onClick={showFilePreview ? sendMessageWithFile : sendMessage}
   className="p-2 rounded-full"
   style={{ backgroundColor: settings.iconColor }}
