@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, EyeOff, ChevronDown, ChevronRight, User, Eye } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -12,7 +12,8 @@ interface Message {
   fileType?: string | null
   fileName?: string | null
   edited?: boolean
-  }
+  usernameColor?: string | null
+}
 
 interface Settings {
   backgroundImage: string | null
@@ -105,7 +106,6 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
-  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -208,6 +208,7 @@ const updatePresence = async () => {
       },
       body: JSON.stringify({
         userId: userId.current,
+        username: displayName,
         isNewVisit: isNewVisitForServer
       })
     })
@@ -288,15 +289,18 @@ useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Handle username login
+  // Handle username login/logout
   const handleLogin = () => {
-    if (username.trim()) {
+    if (displayName !== 'гость') {
+      // Выход - если уже залогинен
+      setDisplayName('гость')
+      localStorage.removeItem('chatUsername')
+      setUsername('')
+    } else if (username.trim()) {
+      // Вход
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
-    } else {
-      setDisplayName('гость')
-      localStorage.removeItem('chatUsername')
     }
   }
 
@@ -365,15 +369,15 @@ useEffect(() => {
 
 // Send message
   const message: Message = {
-  id: Date.now().toString(),
-  username: displayName,
-  text: inputText.trim(),
-  timestamp: Date.now(),
-  replyTo: replyingTo?.id || null,
-  fileUrl: uploadData.fileUrl,
-  fileType: uploadData.fileType,
-  fileName: uploadData.fileName
-  }
+      id: Date.now().toString(),
+      username: displayName,
+      text: inputText.trim(),
+      timestamp: Date.now(),
+      replyTo: replyingTo?.id || null,
+      fileUrl: uploadData.fileUrl,
+      fileType: uploadData.fileType,
+      fileName: uploadData.fileName
+    }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -415,13 +419,13 @@ setShowFilePreview(false)
     }
 
     try {
-      const message: Message = {
-        id: Date.now().toString(),
-        username: displayName,
-        text,
-        timestamp: Date.now(),
-        replyTo: replyingTo?.id || null
-      }
+const message: Message = {
+      id: Date.now().toString(),
+      username: displayName,
+      text,
+      timestamp: Date.now(),
+      replyTo: replyingTo?.id || null
+    }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -484,58 +488,6 @@ const handleReply = () => {
   setSelectedMessage(null)
   }
 
-  // Edit message - only for own messages
-  const handleEdit = () => {
-    const msg = messages.find(m => m.id === selectedMessage)
-    if (msg && msg.username === displayName) {
-      setEditingMessage(msg)
-      setInputText(msg.text)
-    }
-    setShowContextMenu(false)
-    setSelectedMessage(null)
-  }
-
-  // Save edited message
-  const saveEditedMessage = () => {
-    if (!editingMessage || !inputText.trim()) return
-    
-    const messageId = editingMessage.id
-    const newText = inputText.trim()
-    
-    // Optimistically update local state first
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
-    ))
-    
-    // Clear editing state
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-    
-    // Send to server with Authorization header
-    fetch(`${API_URL}/messages`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publicAnonKey}`
-      },
-      body: JSON.stringify({
-        id: messageId,
-        text: newText
-      })
-    }).catch(err => {
-      console.error('Error editing message:', err)
-      fetchMessages() // Refresh only on error to get actual state
-    })
-  }
-
-  // Cancel editing
-  const cancelEdit = () => {
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-  }
-  
   // Delete messages
   const handleDelete = () => {
     setDeleteMode(true)
@@ -1082,22 +1034,42 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 
       {/* Header */}
       <div 
-        className="relative z-10 px-3 py-2 flex items-center gap-3"
+        className="relative z-10 px-3 py-2 flex items-center justify-between"
         style={{ 
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        <MessageCircle size={24} style={{ color: settings.iconColor }} />
-        <div className="flex-1">
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-white">👤 {onlineCount}</span>
-            <span className="text-white">👁 {viewCount}</span>
-          </div>
-          <div className="text-xs text-gray-300 mt-0.5">{displayName}</div>
+{/* Левая часть: иконка сообщения и имя пользователя */}
+        <div className="flex items-center gap-2">
+          <MessageCircle size={20} style={{ color: settings.iconColor }} />
+          <span className="text-sm">
+            <span className="text-white">Вы: </span>
+            <span style={{ color: '#ebef00' }}>{displayName}</span>
+          </span>
         </div>
-        <button onClick={() => setShowInfo(true)} className="p-1">
-          <Info size={20} style={{ color: settings.iconColor }} />
-        </button>
+        
+        {/* Правая часть: статусы и инфо */}
+        <div className="flex items-center gap-3">
+<div className="flex items-center" style={{ gap: '24px' }}>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1">
+                <User size={12} className="text-white" />
+                <span className="text-white text-xs font-medium">{onlineCount}</span>
+              </div>
+              <span className="text-gray-400" style={{ fontSize: '8px' }}>онлайн</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1">
+                <Eye size={12} className="text-white" />
+                <span className="text-white text-xs font-medium">{viewCount}</span>
+              </div>
+              <span className="text-gray-400" style={{ fontSize: '8px' }}>просмотров</span>
+            </div>
+          </div>
+          <button onClick={() => setShowInfo(true)} className="p-1">
+            <Info size={20} style={{ color: settings.iconColor }} />
+          </button>
+        </div>
       </div>
 
       {/* Username Input */}
@@ -1107,20 +1079,24 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-          placeholder="Введите имя..."
-          className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
-        />
+        {displayName === 'гость' && (
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+            placeholder="Введите имя..."
+            className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
+          />
+        )}
         <button
           onClick={handleLogin}
-          className="px-4 py-2 rounded text-sm font-medium text-white"
-          style={{ backgroundColor: settings.iconColor }}
+          className="px-3 py-1 rounded text-sm font-medium text-white transition-colors"
+          style={{ 
+            backgroundColor: displayName !== 'гость' ? '#B71818' : settings.iconColor 
+          }}
         >
-          Войти
+          {displayName !== 'гость' ? 'Выйти' : 'Войти'}
         </button>
       </div>
 
@@ -1167,9 +1143,9 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-          <div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
-            {msg.username}
-          </div>
+<div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
+                    {msg.username}
+                  </div>
 
           {msg.replyTo && renderReplyPreview(msg.replyTo)}
 
@@ -1209,19 +1185,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
-          {/* Edit button - only show for own messages */}
-          {(() => {
-            const msg = messages.find(m => m.id === selectedMessage)
-            return msg && msg.username === displayName ? (
-              <button
-                onClick={handleEdit}
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
-              >
-                <Pencil size={14} />
-                Изменить
-              </button>
-            ) : null
-          })()}
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1256,21 +1219,8 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-{/* Edit Bar */}
-      {editingMessage && (
-        <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
-          <Pencil size={16} className="text-yellow-400" />
-          <div className="flex-1 text-sm text-gray-300">
-            Редактирование сообщения
-          </div>
-          <button onClick={cancelEdit} className="p-1">
-            <X size={16} className="text-gray-400" />
-          </button>
-        </div>
-      )}
-
 {/* Reply Bar */}
-      {replyingTo && !editingMessage && (
+      {replyingTo && (
         <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
           <div className="flex-1 text-sm text-gray-300">
             Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
@@ -1313,7 +1263,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               </div>
             )}
             <div className="absolute inset-0 bg-black/50 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-              <span className="text-white text-xs text-center px-1">Вставить ссылку</span>
+              <span className="text-white text-xs text-center px-1">+</span>
             </div>
           </div>
           <div className="flex-1 min-w-0">
@@ -1390,9 +1340,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (editingMessage) {
-        saveEditedMessage();
-      } else if (showFilePreview && previewFile) {
+      if (showFilePreview && previewFile) {
         sendMessageWithFile();
       } else {
         sendMessage();
@@ -1404,18 +1352,16 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 <button
   type="button"
   onClick={() => {
-    if (editingMessage) {
-      saveEditedMessage();
-    } else if (showFilePreview && previewFile) {
+    if (showFilePreview && previewFile) {
       sendMessageWithFile();
     } else {
       sendMessage();
     }
   }}
   className="p-2 rounded-full"
-  style={{ backgroundColor: editingMessage ? '#eab308' : settings.iconColor }}
+  style={{ backgroundColor: settings.iconColor }}
 >
-  {editingMessage ? <Check size={18} className="text-white" /> : <Send size={18} className="text-white" />}
+  <Send size={18} className="text-white" />
 </button>
       </div>
 
@@ -1430,9 +1376,9 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               </button>
             </div>
             <div className="text-gray-300 space-y-2 text-sm">
-              <p>🌐 Онлайн чат без правил и регистрации.</p>
-              <p>👤Для вхола можно использовать имя. Для сброса имени просто нажмите "войти".</p>
-              <p>💬 Для ответа на со��бщение нажмите и удерживайте на него.</p>
+              <p>🌐 Онлайн чат без регистрации.</p>
+              <p>👤Для участия можно использовать любое имя, либо оставаться "Гостем". Для сброса имени просто нажмите кнопку "выйти".</p>
+              <p>💬 Для ответа на сообщение нажмите и удерживайте на него.</p>
               <p>Доступна отправка файлов в чат. Для отправки кликабельной ссылки на файл/информацию - введите ссылку в кавычках.</p>
               <p>🔆🔆🔆</p>
             </div>
@@ -1487,7 +1433,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Set Theme Modal */}
+{/* Set Theme Modal */}
       {showSetTheme && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full">
@@ -1561,6 +1507,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           onClick={() => setShowContextMenu(false)}
         />
       )}
-    </div>
+
+      </div>
   )
 }
