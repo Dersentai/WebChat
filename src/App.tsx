@@ -12,7 +12,14 @@ interface Message {
   fileType?: string | null
   fileName?: string | null
   edited?: boolean
-  }
+  nameColor?: string | null
+  messageBackground?: string | null
+}
+
+interface UserColors {
+  nameColor: string
+  messageBackground: string
+}
 
 interface Settings {
   backgroundImage: string | null
@@ -106,6 +113,11 @@ export default function App() {
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [userColors, setUserColors] = useState<UserColors>({ nameColor: '#ebef00', messageBackground: '#003a21' })
+  const [tempNameColor, setTempNameColor] = useState('#ebef00')
+  const [tempMsgBgColor, setTempMsgBgColor] = useState('#003a21')
+  const [isLoggedInUser, setIsLoggedInUser] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -149,11 +161,20 @@ const markViewCounted = (): void => {
   } catch (e) {}
 }
 
-  // Load username from localStorage
+  // Load username and colors from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('chatUsername')
     if (saved) {
       setDisplayName(saved)
+      setIsLoggedInUser(true)
+      // Load saved colors for logged in user
+      const savedColors = localStorage.getItem('chatUserColors')
+      if (savedColors) {
+        const colors = JSON.parse(savedColors)
+        setUserColors(colors)
+        setTempNameColor(colors.nameColor)
+        setTempMsgBgColor(colors.messageBackground)
+      }
     }
   }, [])
 
@@ -294,11 +315,55 @@ useEffect(() => {
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
+      setIsLoggedInUser(true)
+      // Show color picker for logged in user
+      setShowColorPicker(true)
     } else {
+      // Reset to guest - clear all custom colors
       setDisplayName('гость')
       localStorage.removeItem('chatUsername')
+      localStorage.removeItem('chatUserColors')
+      setUserColors({ nameColor: '#ebef00', messageBackground: '#003a21' })
+      setTempNameColor('#ebef00')
+      setTempMsgBgColor('#003a21')
+      setIsLoggedInUser(false)
     }
   }
+
+  // Apply selected colors
+  const applyColors = () => {
+    const colors = { nameColor: tempNameColor, messageBackground: tempMsgBgColor }
+    setUserColors(colors)
+    localStorage.setItem('chatUserColors', JSON.stringify(colors))
+    setShowColorPicker(false)
+  }
+
+  // Rainbow color presets
+  const rainbowColors = [
+    { color: '#FF0000', name: 'Красный' },
+    { color: '#FF7F00', name: 'Оранжевый' },
+    { color: '#FFFF00', name: 'Жёлтый' },
+    { color: '#00FF00', name: 'Зелёный' },
+    { color: '#00FFFF', name: 'Голубой' },
+    { color: '#0000FF', name: 'Синий' },
+    { color: '#8B00FF', name: 'Фиолетовый' },
+    { color: '#FF1493', name: 'Розовый' },
+    { color: '#FFFFFF', name: 'Белый' },
+    { color: '#ebef00', name: 'Лимонный' },
+  ]
+
+  const bgColors = [
+    { color: '#003a21', name: 'Тёмно-зелёный' },
+    { color: '#1a1a2e', name: 'Тёмно-синий' },
+    { color: '#2d1b2d', name: 'Пурпурный' },
+    { color: '#2d2d1b', name: 'Оливковый' },
+    { color: '#1b2d2d', name: 'Бирюзовый' },
+    { color: '#2d1b1b', name: 'Бордовый' },
+    { color: '#1b1b2d', name: 'Индиго' },
+    { color: '#2d2d2d', name: 'Серый' },
+    { color: '#0f2027', name: 'Графитовый' },
+    { color: '#1a0a2e', name: 'Фиолетовый' },
+  ]
 
   // Handle file selection - now shows small preview above input
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -372,7 +437,9 @@ useEffect(() => {
   replyTo: replyingTo?.id || null,
   fileUrl: uploadData.fileUrl,
   fileType: uploadData.fileType,
-  fileName: uploadData.fileName
+  fileName: uploadData.fileName,
+  nameColor: isLoggedInUser ? userColors.nameColor : null,
+  messageBackground: isLoggedInUser ? userColors.messageBackground : null
   }
 
       await fetch(`${API_URL}/messages`, {
@@ -420,7 +487,9 @@ setShowFilePreview(false)
         username: displayName,
         text,
         timestamp: Date.now(),
-        replyTo: replyingTo?.id || null
+        replyTo: replyingTo?.id || null,
+        nameColor: isLoggedInUser ? userColors.nameColor : null,
+        messageBackground: isLoggedInUser ? userColors.messageBackground : null
       }
 
       await fetch(`${API_URL}/messages`, {
@@ -484,10 +553,10 @@ const handleReply = () => {
   setSelectedMessage(null)
   }
 
-  // Edit message - only for own messages
+  // Edit message - only for own messages AND only for logged in users (not guests)
   const handleEdit = () => {
     const msg = messages.find(m => m.id === selectedMessage)
-    if (msg && msg.username === displayName) {
+    if (msg && msg.username === displayName && isLoggedInUser && displayName !== 'гость') {
       setEditingMessage(msg)
       setInputText(msg.text)
     }
@@ -1093,7 +1162,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <span className="text-white">👤 {onlineCount}</span>
             <span className="text-white">👁 {viewCount}</span>
           </div>
-          <div className="text-xs text-gray-300 mt-0.5">{displayName}</div>
+          <div className="text-xs mt-0.5 font-medium" style={{ color: isLoggedInUser ? userColors.nameColor : '#9ca3af' }}>{displayName}</div>
         </div>
         <button onClick={() => setShowInfo(true)} className="p-1">
           <Info size={20} style={{ color: settings.iconColor }} />
@@ -1162,12 +1231,12 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           className="inline-block text-white p-3 rounded-lg max-w-[85%] whitespace-pre-wrap break-words"
           style={{
             marginTop: idx === 0 ? '8px' : '0',
-            backgroundColor: hexToRgba('#003a21', 0.8),
+            backgroundColor: hexToRgba(msg.messageBackground || '#003a21', 0.8),
             border: isSelected ? '2px solid rgba(255, 80, 80, 0.9)' : undefined,
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-          <div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
+          <div className="text-xs font-medium mb-1" style={{ color: msg.nameColor || '#ebef00' }}>
             {msg.username}
           </div>
 
@@ -1209,10 +1278,11 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
-          {/* Edit button - only show for own messages */}
+          {/* Edit button - only show for own messages AND only for logged in users (not guests) */}
           {(() => {
             const msg = messages.find(m => m.id === selectedMessage)
-            return msg && msg.username === displayName ? (
+            // Редактирование доступно только если: пользователь вошёл под именем И это его сообщение
+            return msg && msg.username === displayName && isLoggedInUser && displayName !== 'гость' ? (
               <button
                 onClick={handleEdit}
                 className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
@@ -1545,6 +1615,133 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
               <button
                 onClick={applyTheme}
                 className="w-full px-4 py-2 rounded text-sm font-medium text-white"
+                style={{ backgroundColor: settings.iconColor }}
+              >
+                Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Color Picker Modal */}
+      {showColorPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">Настройка цветов</h2>
+              <button onClick={() => setShowColorPicker(false)}>
+                <X size={24} className="text-gray-400" />
+              </button>
+            </div>
+            
+            {/* Name Color Section */}
+            <div className="mb-6">
+              <label className="text-sm text-gray-300 block mb-2">Цвет имени</label>
+              
+              {/* Rainbow gradient indicator */}
+              <div className="h-3 rounded-full mb-3" style={{
+                background: 'linear-gradient(to right, #FF0000, #FF7F00, #FFFF00, #00FF00, #00FFFF, #0000FF, #8B00FF)'
+              }} />
+              
+              {/* Color presets */}
+              <div className="grid grid-cols-5 gap-2 mb-3">
+                {rainbowColors.map((c) => (
+                  <button
+                    key={c.color}
+                    onClick={() => setTempNameColor(c.color)}
+                    className="w-full aspect-square rounded-lg border-2 transition-all"
+                    style={{ 
+                      backgroundColor: c.color,
+                      borderColor: tempNameColor === c.color ? '#fff' : 'transparent',
+                      boxShadow: tempNameColor === c.color ? '0 0 0 2px rgba(255,255,255,0.5)' : 'none'
+                    }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+              
+              {/* Hex input with color picker */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={tempNameColor}
+                  onChange={(e) => setTempNameColor(e.target.value)}
+                  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm font-mono"
+                  placeholder="#FFFFFF"
+                />
+                <input
+                  type="color"
+                  value={tempNameColor}
+                  onChange={(e) => setTempNameColor(e.target.value)}
+                  className="w-12 h-10 rounded cursor-pointer"
+                />
+              </div>
+              
+              {/* Preview */}
+              <div className="mt-2 p-2 bg-gray-700 rounded text-sm">
+                <span style={{ color: tempNameColor }}>{displayName}</span>
+              </div>
+            </div>
+            
+            {/* Message Background Section */}
+            <div className="mb-6">
+              <label className="text-sm text-gray-300 block mb-2">Фон сообщений</label>
+              
+              {/* Color presets */}
+              <div className="grid grid-cols-5 gap-2 mb-3">
+                {bgColors.map((c) => (
+                  <button
+                    key={c.color}
+                    onClick={() => setTempMsgBgColor(c.color)}
+                    className="w-full aspect-square rounded-lg border-2 transition-all"
+                    style={{ 
+                      backgroundColor: c.color,
+                      borderColor: tempMsgBgColor === c.color ? '#fff' : 'transparent',
+                      boxShadow: tempMsgBgColor === c.color ? '0 0 0 2px rgba(255,255,255,0.5)' : 'none'
+                    }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+              
+              {/* Hex input with color picker */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={tempMsgBgColor}
+                  onChange={(e) => setTempMsgBgColor(e.target.value)}
+                  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm font-mono"
+                  placeholder="#003a21"
+                />
+                <input
+                  type="color"
+                  value={tempMsgBgColor}
+                  onChange={(e) => setTempMsgBgColor(e.target.value)}
+                  className="w-12 h-10 rounded cursor-pointer"
+                />
+              </div>
+              
+              {/* Preview */}
+              <div 
+                className="mt-2 p-3 rounded text-sm"
+                style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}
+              >
+                <div style={{ color: tempNameColor }} className="text-xs font-medium mb-1">{displayName}</div>
+                <div className="text-white">Пример сообщения</div>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowColorPicker(false)}
+                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded text-sm"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={applyColors}
+                className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
                 style={{ backgroundColor: settings.iconColor }}
               >
                 Применить
