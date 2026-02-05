@@ -106,11 +106,6 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
-  const [showColorPicker, setShowColorPicker] = useState(false)
-  const [usernameColor, setUsernameColor] = useState(() => {
-    return localStorage.getItem('chatUsernameColor') || '#ebef00'
-  })
-  const [tempColor, setTempColor] = useState('#ebef00')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -302,20 +297,11 @@ useEffect(() => {
       localStorage.removeItem('chatUsername')
       setUsername('')
     } else if (username.trim()) {
-      // Показать выбор цвета перед входом
-      setTempColor(usernameColor)
-      setShowColorPicker(true)
+      // Вход
+      setDisplayName(username.trim())
+      localStorage.setItem('chatUsername', username.trim())
+      setUsername('')
     }
-  }
-  
-  // Подтверждение входа с выбранным цветом
-  const confirmLogin = () => {
-    setDisplayName(username.trim())
-    localStorage.setItem('chatUsername', username.trim())
-    setUsernameColor(tempColor)
-    localStorage.setItem('chatUsernameColor', tempColor)
-    setUsername('')
-    setShowColorPicker(false)
   }
 
   // Handle file selection - now shows small preview above input
@@ -390,8 +376,7 @@ useEffect(() => {
       replyTo: replyingTo?.id || null,
       fileUrl: uploadData.fileUrl,
       fileType: uploadData.fileType,
-      fileName: uploadData.fileName,
-      usernameColor: usernameColor
+      fileName: uploadData.fileName
     }
 
       await fetch(`${API_URL}/messages`, {
@@ -439,8 +424,7 @@ const message: Message = {
       username: displayName,
       text,
       timestamp: Date.now(),
-      replyTo: replyingTo?.id || null,
-      usernameColor: usernameColor
+      replyTo: replyingTo?.id || null
     }
 
       await fetch(`${API_URL}/messages`, {
@@ -1060,7 +1044,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           <MessageCircle size={20} style={{ color: settings.iconColor }} />
           <span className="text-sm">
             <span className="text-white">Вы: </span>
-            <span style={{ color: usernameColor }}>{displayName}</span>
+            <span style={{ color: '#22c55e' }}>{displayName}</span>
           </span>
         </div>
         
@@ -1159,7 +1143,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-<div className="text-xs font-medium mb-1" style={{ color: msg.usernameColor || '#ebef00' }}>
+<div className="text-xs font-medium mb-1" style={{ color: '#ebef00' }}>
                     {msg.username}
                   </div>
 
@@ -1449,88 +1433,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-{/* Color Picker Modal */}
-      {showColorPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-gray-800 rounded-lg p-5 max-w-xs w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">Цвет имени</h2>
-              <button onClick={() => setShowColorPicker(false)}>
-                <X size={20} className="text-gray-400" />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Предпросмотр */}
-              <div className="text-center py-2 bg-gray-900 rounded">
-                <span className="text-sm font-medium" style={{ color: tempColor }}>
-                  {username.trim()}
-                </span>
-              </div>
-              
-              {/* HEX код */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">HEX код</label>
-                <input
-                  type="text"
-                  value={tempColor}
-                  onChange={(e) => setTempColor(e.target.value)}
-                  className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm"
-                  placeholder="#ffffff"
-                />
-              </div>
-              
-              {/* Цветовой пикер */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Выберите цвет</label>
-                <input
-                  type="color"
-                  value={tempColor}
-                  onChange={(e) => setTempColor(e.target.value)}
-                  className="w-full h-12 rounded cursor-pointer"
-                  style={{ padding: 0 }}
-                />
-              </div>
-              
-              {/* Быстрые цвета */}
-              <div>
-                <label className="text-xs text-gray-400 block mb-2">Быстрый выбор</label>
-                <div className="flex flex-wrap gap-2">
-                  {['#ff4444', '#ff8800', '#ffcc00', '#44ff44', '#00ccff', '#8844ff', '#ff44ff', '#ffffff'].map(color => (
-                    <button
-                      key={color}
-                      onClick={() => setTempColor(color)}
-                      className="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110"
-                      style={{ 
-                        backgroundColor: color,
-                        borderColor: tempColor === color ? '#fff' : 'transparent'
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => setShowColorPicker(false)}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded text-sm"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={confirmLogin}
-                className="flex-1 px-4 py-2 text-white rounded text-sm"
-                style={{ backgroundColor: settings.iconColor }}
-              >
-                Войти
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Set Theme Modal */}
+{/* Set Theme Modal */}
       {showSetTheme && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full">
