@@ -333,6 +333,7 @@ useEffect(() => {
   // Apply selected colors
   const applyColors = () => {
     const colors = { nameColor: tempNameColor, messageBackground: tempMsgBgColor }
+    console.log('[v0] Applying colors:', colors)
     setUserColors(colors)
     localStorage.setItem('chatUserColors', JSON.stringify(colors))
     setShowColorPicker(false)
@@ -341,7 +342,7 @@ useEffect(() => {
   // Rainbow color presets
   const rainbowColors = [
     { color: '#FF0000', name: 'Красный' },
-    { color: '#FF7F00', name: 'Оранжевый' },
+    { color: '#FF7F00', name: '��ранжевый' },
     { color: '#FFFF00', name: 'Жёлтый' },
     { color: '#00FF00', name: 'Зелёный' },
     { color: '#00FFFF', name: 'Голубой' },
@@ -482,6 +483,7 @@ setShowFilePreview(false)
     }
 
     try {
+      console.log('[v0] Sending message - isLoggedInUser:', isLoggedInUser, 'userColors:', userColors)
       const message: Message = {
         id: Date.now().toString(),
         username: displayName,
@@ -491,6 +493,7 @@ setShowFilePreview(false)
         nameColor: isLoggedInUser ? userColors.nameColor : null,
         messageBackground: isLoggedInUser ? userColors.messageBackground : null
       }
+      console.log('[v0] Message to send:', message)
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -1162,7 +1165,17 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <span className="text-white">👤 {onlineCount}</span>
             <span className="text-white">👁 {viewCount}</span>
           </div>
-          <div className="text-xs mt-0.5 font-medium" style={{ color: isLoggedInUser ? userColors.nameColor : '#9ca3af' }}>{displayName}</div>
+          {isLoggedInUser ? (
+                <button 
+                  onClick={() => setShowColorPicker(true)}
+                  className="text-xs mt-0.5 font-medium underline decoration-dotted"
+                  style={{ color: userColors.nameColor }}
+                >
+                  {displayName}
+                </button>
+              ) : (
+                <div className="text-xs mt-0.5 font-medium" style={{ color: '#9ca3af' }}>{displayName}</div>
+              )}
         </div>
         <button onClick={() => setShowInfo(true)} className="p-1">
           <Info size={20} style={{ color: settings.iconColor }} />
@@ -1184,14 +1197,31 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           placeholder="Введите имя..."
           className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
         />
-        <button
-          onClick={handleLogin}
-          className="px-4 py-2 rounded text-sm font-medium text-white"
-          style={{ backgroundColor: settings.iconColor }}
-        >
-          Войти
-        </button>
-      </div>
+{isLoggedInUser ? (
+            <button
+              onClick={() => {
+                setDisplayName('гость')
+                localStorage.removeItem('chatUsername')
+                localStorage.removeItem('chatUserColors')
+                setUserColors({ nameColor: '#ebef00', messageBackground: '#003a21' })
+                setTempNameColor('#ebef00')
+                setTempMsgBgColor('#003a21')
+                setIsLoggedInUser(false)
+              }}
+              className="px-4 py-2 rounded text-sm font-medium text-white bg-red-600"
+            >
+              Выйти
+            </button>
+          ) : (
+            <button
+              onClick={handleLogin}
+              className="px-4 py-2 rounded text-sm font-medium text-white"
+              style={{ backgroundColor: settings.iconColor }}
+            >
+              Войти
+            </button>
+          )}
+        </div>
 
     {/* Messages */}
       <div className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2">
@@ -1624,37 +1654,36 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Color Picker Modal */}
+      {/* Color Picker Modal - компактная версия снизу экрана */}
       {showColorPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Настройка цветов</h2>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+          <div className="bg-gray-800 rounded-t-2xl p-4 w-full max-h-[50vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold text-white">Настройка цветов</h2>
               <button onClick={() => setShowColorPicker(false)}>
-                <X size={24} className="text-gray-400" />
+                <X size={20} className="text-gray-400" />
               </button>
             </div>
             
             {/* Name Color Section */}
-            <div className="mb-6">
-              <label className="text-sm text-gray-300 block mb-2">Цвет имени</label>
+            <div className="mb-3">
+              <label className="text-xs text-gray-300 block mb-1">Цвет имени</label>
               
               {/* Rainbow gradient indicator */}
-              <div className="h-3 rounded-full mb-3" style={{
+              <div className="h-2 rounded-full mb-2" style={{
                 background: 'linear-gradient(to right, #FF0000, #FF7F00, #FFFF00, #00FF00, #00FFFF, #0000FF, #8B00FF)'
               }} />
               
-              {/* Color presets */}
-              <div className="grid grid-cols-5 gap-2 mb-3">
+              {/* Color presets - компактная сетка */}
+              <div className="grid grid-cols-10 gap-1 mb-2">
                 {rainbowColors.map((c) => (
                   <button
                     key={c.color}
                     onClick={() => setTempNameColor(c.color)}
-                    className="w-full aspect-square rounded-lg border-2 transition-all"
+                    className="w-full aspect-square rounded border-2 transition-all"
                     style={{ 
                       backgroundColor: c.color,
-                      borderColor: tempNameColor === c.color ? '#fff' : 'transparent',
-                      boxShadow: tempNameColor === c.color ? '0 0 0 2px rgba(255,255,255,0.5)' : 'none'
+                      borderColor: tempNameColor === c.color ? '#fff' : 'transparent'
                     }}
                     title={c.name}
                   />
@@ -1667,38 +1696,32 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
                   type="text"
                   value={tempNameColor}
                   onChange={(e) => setTempNameColor(e.target.value)}
-                  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm font-mono"
+                  className="flex-1 bg-gray-700 text-white px-2 py-1 rounded text-xs font-mono"
                   placeholder="#FFFFFF"
                 />
                 <input
                   type="color"
                   value={tempNameColor}
                   onChange={(e) => setTempNameColor(e.target.value)}
-                  className="w-12 h-10 rounded cursor-pointer"
+                  className="w-8 h-7 rounded cursor-pointer"
                 />
-              </div>
-              
-              {/* Preview */}
-              <div className="mt-2 p-2 bg-gray-700 rounded text-sm">
-                <span style={{ color: tempNameColor }}>{displayName}</span>
               </div>
             </div>
             
             {/* Message Background Section */}
-            <div className="mb-6">
-              <label className="text-sm text-gray-300 block mb-2">Фон сообщений</label>
+            <div className="mb-3">
+              <label className="text-xs text-gray-300 block mb-1">Фон сообщений</label>
               
-              {/* Color presets */}
-              <div className="grid grid-cols-5 gap-2 mb-3">
+              {/* Color presets - компактная сетка */}
+              <div className="grid grid-cols-10 gap-1 mb-2">
                 {bgColors.map((c) => (
                   <button
                     key={c.color}
                     onClick={() => setTempMsgBgColor(c.color)}
-                    className="w-full aspect-square rounded-lg border-2 transition-all"
+                    className="w-full aspect-square rounded border-2 transition-all"
                     style={{ 
                       backgroundColor: c.color,
-                      borderColor: tempMsgBgColor === c.color ? '#fff' : 'transparent',
-                      boxShadow: tempMsgBgColor === c.color ? '0 0 0 2px rgba(255,255,255,0.5)' : 'none'
+                      borderColor: tempMsgBgColor === c.color ? '#fff' : 'transparent'
                     }}
                     title={c.name}
                   />
@@ -1711,37 +1734,37 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
                   type="text"
                   value={tempMsgBgColor}
                   onChange={(e) => setTempMsgBgColor(e.target.value)}
-                  className="flex-1 bg-gray-700 text-white px-3 py-2 rounded text-sm font-mono"
+                  className="flex-1 bg-gray-700 text-white px-2 py-1 rounded text-xs font-mono"
                   placeholder="#003a21"
                 />
                 <input
                   type="color"
                   value={tempMsgBgColor}
                   onChange={(e) => setTempMsgBgColor(e.target.value)}
-                  className="w-12 h-10 rounded cursor-pointer"
+                  className="w-8 h-7 rounded cursor-pointer"
                 />
               </div>
-              
-              {/* Preview */}
-              <div 
-                className="mt-2 p-3 rounded text-sm"
-                style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}
-              >
-                <div style={{ color: tempNameColor }} className="text-xs font-medium mb-1">{displayName}</div>
-                <div className="text-white">Пример сообщения</div>
-              </div>
+            </div>
+            
+            {/* Preview */}
+            <div 
+              className="p-2 rounded text-sm mb-3"
+              style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}
+            >
+              <div style={{ color: tempNameColor }} className="text-xs font-medium mb-1">{displayName}</div>
+              <div className="text-white text-xs">Пример сообщения</div>
             </div>
             
             <div className="flex gap-2">
               <button
                 onClick={() => setShowColorPicker(false)}
-                className="flex-1 px-4 py-2 bg-gray-700 text-white rounded text-sm"
+                className="flex-1 px-3 py-2 bg-gray-700 text-white rounded text-sm"
               >
                 Отмена
               </button>
               <button
                 onClick={applyColors}
-                className="flex-1 px-4 py-2 rounded text-sm font-medium text-white"
+                className="flex-1 px-3 py-2 rounded text-sm font-medium text-white"
                 style={{ backgroundColor: settings.iconColor }}
               >
                 Применить
