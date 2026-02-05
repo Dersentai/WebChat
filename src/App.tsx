@@ -1038,28 +1038,28 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        {/* Левая часть: имя пользователя и иконка сообщения */}
+{/* Левая часть: иконка сообщения и имя пользователя */}
         <div className="flex items-center gap-2">
-          <span className="text-white text-sm">Вы: {displayName}</span>
           <MessageCircle size={20} style={{ color: settings.iconColor }} />
+          <span className="text-white text-sm">Вы: {displayName}</span>
         </div>
         
         {/* Правая часть: статусы и инфо */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-1">
                 <User size={12} className="text-white" />
                 <span className="text-white text-xs font-medium">{onlineCount}</span>
               </div>
-              <span className="text-gray-400" style={{ fontSize: '9px' }}>онлайн</span>
+              <span className="text-gray-400" style={{ fontSize: '8px' }}>онлайн</span>
             </div>
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-1">
                 <Eye size={12} className="text-white" />
                 <span className="text-white text-xs font-medium">{viewCount}</span>
               </div>
-              <span className="text-gray-400" style={{ fontSize: '9px' }}>просмотров</span>
+              <span className="text-gray-400" style={{ fontSize: '8px' }}>просмотров</span>
             </div>
           </div>
           <button onClick={() => setShowInfo(true)} className="p-1">
