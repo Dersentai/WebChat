@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, EyeOff, ChevronDown, ChevronRight, User, Eye } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -19,6 +19,12 @@ interface Settings {
   panelColor: string
   iconColor: string
   panelOpacity: number
+}
+
+interface Participant {
+  username: string
+  lastSeen: number
+  isOnline: boolean
 }
 
 // Spoiler component
@@ -105,7 +111,8 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
-  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
+  const [showParticipants, setShowParticipants] = useState(false)
+  const [participants, setParticipants] = useState<Participant[]>([])
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -208,6 +215,7 @@ const updatePresence = async () => {
       },
       body: JSON.stringify({
         userId: userId.current,
+        username: displayName,
         isNewVisit: isNewVisitForServer
       })
     })
@@ -216,6 +224,11 @@ const updatePresence = async () => {
     if (data.success) {
       setOnlineCount(data.onlineCount)
       setViewCount(data.views)
+      
+      // Обновляем список участников если он есть в ответе
+      if (data.participants) {
+        setParticipants(data.participants)
+      }
 
       hasVisited.current = true
       try { localStorage.setItem('chatHasVisited', 'true') } catch (e) {}
@@ -484,58 +497,6 @@ const handleReply = () => {
   setSelectedMessage(null)
   }
 
-  // Edit message - only for own messages
-  const handleEdit = () => {
-    const msg = messages.find(m => m.id === selectedMessage)
-    if (msg && msg.username === displayName) {
-      setEditingMessage(msg)
-      setInputText(msg.text)
-    }
-    setShowContextMenu(false)
-    setSelectedMessage(null)
-  }
-
-  // Save edited message
-  const saveEditedMessage = () => {
-    if (!editingMessage || !inputText.trim()) return
-    
-    const messageId = editingMessage.id
-    const newText = inputText.trim()
-    
-    // Optimistically update local state first
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
-    ))
-    
-    // Clear editing state
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-    
-    // Send to server with Authorization header
-    fetch(`${API_URL}/messages`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publicAnonKey}`
-      },
-      body: JSON.stringify({
-        id: messageId,
-        text: newText
-      })
-    }).catch(err => {
-      console.error('Error editing message:', err)
-      fetchMessages() // Refresh only on error to get actual state
-    })
-  }
-
-  // Cancel editing
-  const cancelEdit = () => {
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-  }
-  
   // Delete messages
   const handleDelete = () => {
     setDeleteMode(true)
@@ -1087,17 +1048,40 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        <MessageCircle size={24} style={{ color: settings.iconColor }} />
-        <div className="flex-1">
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-white">👤 {onlineCount}</span>
-            <span className="text-white">👁 {viewCount}</span>
-          </div>
-          <div className="text-xs text-gray-300 mt-0.5">{displayName}</div>
-        </div>
-        <button onClick={() => setShowInfo(true)} className="p-1">
-          <Info size={20} style={{ color: settings.iconColor }} />
+        <button 
+          onClick={() => setShowParticipants(true)} 
+          className="p-1 hover:bg-white/10 rounded"
+        >
+          <MessageCircle size={24} style={{ color: settings.iconColor }} />
         </button>
+        
+        {/* Статусы в центре */}
+        <div className="flex-1 flex justify-center">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1">
+                <User size={14} className="text-white" />
+                <span className="text-white text-sm font-medium">{onlineCount}</span>
+              </div>
+              <span className="text-gray-400 text-xs">онлайн</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1">
+                <Eye size={14} className="text-white" />
+                <span className="text-white text-sm font-medium">{viewCount}</span>
+              </div>
+              <span className="text-gray-400 text-xs">просмотров</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Имя пользователя справа */}
+        <div className="flex items-center gap-2">
+          <span className="text-white text-sm">Вы: {displayName}</span>
+          <button onClick={() => setShowInfo(true)} className="p-1">
+            <Info size={20} style={{ color: settings.iconColor }} />
+          </button>
+        </div>
       </div>
 
       {/* Username Input */}
@@ -1209,19 +1193,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
-          {/* Edit button - only show for own messages */}
-          {(() => {
-            const msg = messages.find(m => m.id === selectedMessage)
-            return msg && msg.username === displayName ? (
-              <button
-                onClick={handleEdit}
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
-              >
-                <Pencil size={14} />
-                Изменить
-              </button>
-            ) : null
-          })()}
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1256,21 +1227,8 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-{/* Edit Bar */}
-      {editingMessage && (
-        <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
-          <Pencil size={16} className="text-yellow-400" />
-          <div className="flex-1 text-sm text-gray-300">
-            Редактирование сообщения
-          </div>
-          <button onClick={cancelEdit} className="p-1">
-            <X size={16} className="text-gray-400" />
-          </button>
-        </div>
-      )}
-
 {/* Reply Bar */}
-      {replyingTo && !editingMessage && (
+      {replyingTo && (
         <div className="relative z-10 px-3 py-2 bg-gray-800 flex items-center gap-2">
           <div className="flex-1 text-sm text-gray-300">
             Ответ на: <span style={{ color: '#ebef00' }}>{replyingTo.username}</span>
@@ -1390,9 +1348,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     // Отправка при Ctrl+Enter или Cmd+Enter (опционально).
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (editingMessage) {
-        saveEditedMessage();
-      } else if (showFilePreview && previewFile) {
+      if (showFilePreview && previewFile) {
         sendMessageWithFile();
       } else {
         sendMessage();
@@ -1404,18 +1360,16 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 <button
   type="button"
   onClick={() => {
-    if (editingMessage) {
-      saveEditedMessage();
-    } else if (showFilePreview && previewFile) {
+    if (showFilePreview && previewFile) {
       sendMessageWithFile();
     } else {
       sendMessage();
     }
   }}
   className="p-2 rounded-full"
-  style={{ backgroundColor: editingMessage ? '#eab308' : settings.iconColor }}
+  style={{ backgroundColor: settings.iconColor }}
 >
-  {editingMessage ? <Check size={18} className="text-white" /> : <Send size={18} className="text-white" />}
+  <Send size={18} className="text-white" />
 </button>
       </div>
 
@@ -1554,6 +1508,74 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
+      {/* Participants Drawer */}
+      {showParticipants && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50"
+            onClick={() => setShowParticipants(false)}
+          />
+          <div 
+            className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-gray-900 shadow-lg flex flex-col"
+            style={{ animation: 'slideIn 0.2s ease-out' }}
+          >
+            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-700">
+              <h2 className="text-white font-medium">Участники чата</h2>
+              <button onClick={() => setShowParticipants(false)} className="p-1">
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {participants.length === 0 ? (
+                <div className="p-4 text-gray-400 text-sm text-center">
+                  Нет данных об участниках
+                </div>
+              ) : (
+                participants.map((participant, idx) => (
+                  <div 
+                    key={idx} 
+                    className="px-4 py-3 flex items-center gap-3 border-b border-gray-800 hover:bg-gray-800/50"
+                  >
+                    {/* Индикатор статуса */}
+                    <div className="relative">
+                      <div 
+                        className={`w-3 h-3 rounded-full ${
+                          participant.isOnline 
+                            ? 'bg-green-500' 
+                            : 'bg-red-500'
+                        }`}
+                        style={participant.isOnline ? {
+                          animation: 'pulse 1.5s ease-in-out infinite',
+                          boxShadow: '0 0 8px #22c55e'
+                        } : {}}
+                      />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate">
+                        {participant.username}
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        {participant.isOnline ? (
+                          'сейчас онлайн'
+                        ) : (
+                          `был(а): ${new Date(participant.lastSeen).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}`
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Click outside to close context menu */}
       {showContextMenu && (
         <div
@@ -1561,6 +1583,27 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           onClick={() => setShowContextMenu(false)}
         />
       )}
+
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(-100%);
+          }
+          to {
+            transform: translateX(0);
+          }
+        }
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.7;
+            transform: scale(1.2);
+          }
+        }
+      `}</style>
     </div>
   )
 }

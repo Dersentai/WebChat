@@ -179,36 +179,79 @@ app.get('/make-server-98c5d13a/stats', async (c) => {
 app.post('/make-server-98c5d13a/presence', async (c) => {
   try {
     const body = await c.req.json()
-    const { userId, isNewVisit } = body
+    const { userId, username, isNewVisit, leave } = body
     
     const stats = await kv.get('chat_stats') || { views: 0, onlineUsers: [] }
+    
+    // Получаем историю участников
+    const participantsHistory = await kv.get('chat_participants') || {}
     
     // Increment views for new visits
     if (isNewVisit) {
       stats.views = (stats.views || 0) + 1
     }
     
-    // Update user's last seen
     const now = Date.now()
+    
+    // Если пользователь уходит
+    if (leave) {
+      stats.onlineUsers = stats.onlineUsers.filter((u: any) => u.id !== userId)
+      await kv.set('chat_stats', stats)
+      return c.json({ success: true })
+    }
+    
+    // Update user's last seen
     const userIndex = stats.onlineUsers.findIndex((u: any) => u.id === userId)
     
     if (userIndex >= 0) {
       stats.onlineUsers[userIndex].lastSeen = now
+      if (username && username !== 'гость') {
+        stats.onlineUsers[userIndex].username = username
+      }
     } else {
-      stats.onlineUsers.push({ id: userId, lastSeen: now })
+      stats.onlineUsers.push({ 
+        id: userId, 
+        lastSeen: now,
+        username: username || 'гость'
+      })
     }
     
-    // Clean up old users
+    // Сохраняем участника в историю если у него есть имя
+    if (username && username !== 'гость') {
+      participantsHistory[username] = {
+        username,
+        lastSeen: now,
+        isOnline: true
+      }
+      await kv.set('chat_participants', participantsHistory)
+    }
+    
+    // Clean up old users (older than 15 seconds)
     stats.onlineUsers = stats.onlineUsers.filter(
-      (user: any) => now - user.lastSeen < 10000
+      (user: any) => now - user.lastSeen < 15000
     )
     
     await kv.set('chat_stats', stats)
     
+    // Собираем список участников для ответа
+    const onlineUsernames = new Set(stats.onlineUsers.map((u: any) => u.username).filter((n: string) => n && n !== 'гость'))
+    
+    const participants = Object.values(participantsHistory)
+      .map((p: any) => ({
+        ...p,
+        isOnline: onlineUsernames.has(p.username)
+      }))
+      .sort((a: any, b: any) => {
+        // Сначала онлайн, потом по времени последнего визита
+        if (a.isOnline !== b.isOnline) return b.isOnline ? 1 : -1
+        return b.lastSeen - a.lastSeen
+      })
+    
     return c.json({ 
       success: true,
       views: stats.views,
-      onlineCount: stats.onlineUsers.length
+      onlineCount: stats.onlineUsers.length,
+      participants
     })
   } catch (error) {
     console.log('Error updating presence:', error)
