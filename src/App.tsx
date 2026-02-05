@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { MessageCircle, Info, Paperclip, Send, X, Check, EyeOff, ChevronDown, ChevronRight } from 'lucide-react'
 import { projectId, publicAnonKey } from './utils/supabase/info'
 
 interface Message {
@@ -112,7 +112,6 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
-  const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [userColors, setUserColors] = useState<UserColors>({ nameColor: '#ebef00', messageBackground: '#003a21' })
   const [tempNameColor, setTempNameColor] = useState('#ebef00')
@@ -170,11 +169,17 @@ const markViewCounted = (): void => {
       // Load saved colors for logged in user
       const savedColors = localStorage.getItem('chatUserColors')
       if (savedColors) {
-        const colors = JSON.parse(savedColors)
-        setUserColors(colors)
-        setTempNameColor(colors.nameColor)
-        setTempMsgBgColor(colors.messageBackground)
+        try {
+          const colors = JSON.parse(savedColors)
+          setUserColors(colors)
+          setTempNameColor(colors.nameColor)
+          setTempMsgBgColor(colors.messageBackground)
+        } catch (e) {
+          // If parsing fails, use defaults
+        }
       }
+    } else {
+      setIsLoggedInUser(false)
     }
   }, [])
 
@@ -333,7 +338,6 @@ useEffect(() => {
   // Apply selected colors
   const applyColors = () => {
     const colors = { nameColor: tempNameColor, messageBackground: tempMsgBgColor }
-    console.log('[v0] Applying colors:', colors)
     setUserColors(colors)
     localStorage.setItem('chatUserColors', JSON.stringify(colors))
     setShowColorPicker(false)
@@ -483,7 +487,6 @@ setShowFilePreview(false)
     }
 
     try {
-      console.log('[v0] Sending message - isLoggedInUser:', isLoggedInUser, 'userColors:', userColors)
       const message: Message = {
         id: Date.now().toString(),
         username: displayName,
@@ -493,7 +496,6 @@ setShowFilePreview(false)
         nameColor: isLoggedInUser ? userColors.nameColor : null,
         messageBackground: isLoggedInUser ? userColors.messageBackground : null
       }
-      console.log('[v0] Message to send:', message)
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -556,58 +558,6 @@ const handleReply = () => {
   setSelectedMessage(null)
   }
 
-  // Edit message - only for own messages AND only for logged in users (not guests)
-  const handleEdit = () => {
-    const msg = messages.find(m => m.id === selectedMessage)
-    if (msg && msg.username === displayName && isLoggedInUser && displayName !== 'гость') {
-      setEditingMessage(msg)
-      setInputText(msg.text)
-    }
-    setShowContextMenu(false)
-    setSelectedMessage(null)
-  }
-
-  // Save edited message
-  const saveEditedMessage = () => {
-    if (!editingMessage || !inputText.trim()) return
-    
-    const messageId = editingMessage.id
-    const newText = inputText.trim()
-    
-    // Optimistically update local state first
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId ? { ...msg, text: newText, edited: true } : msg
-    ))
-    
-    // Clear editing state
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-    
-    // Send to server with Authorization header
-    fetch(`${API_URL}/messages`, {
-      method: 'PUT',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publicAnonKey}`
-      },
-      body: JSON.stringify({
-        id: messageId,
-        text: newText
-      })
-    }).catch(err => {
-      console.error('Error editing message:', err)
-      fetchMessages() // Refresh only on error to get actual state
-    })
-  }
-
-  // Cancel editing
-  const cancelEdit = () => {
-    setEditingMessage(null)
-    setInputText('')
-    setSpoilerOpen(false)
-  }
-  
   // Delete messages
   const handleDelete = () => {
     setDeleteMode(true)
@@ -1308,20 +1258,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           >
             Ответить
           </button>
-          {/* Edit button - only show for own messages AND only for logged in users (not guests) */}
-          {(() => {
-            const msg = messages.find(m => m.id === selectedMessage)
-            // Редактирование доступно только если: пользователь вошёл под именем И это его сообщение
-            return msg && msg.username === displayName && isLoggedInUser && displayName !== 'гость' ? (
-              <button
-                onClick={handleEdit}
-                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 flex items-center gap-2"
-              >
-                <Pencil size={14} />
-                Изменить
-              </button>
-            ) : null
-          })()}
+
           <button
             onClick={handleDelete}
             className="w-full px-4 py-2 text-left text-white hover:bg-gray-700"
@@ -1654,120 +1591,85 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Color Picker Modal - компактная версия снизу экрана */}
+      {/* Color Picker Modal - очень компактная версия */}
       {showColorPicker && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-          <div className="bg-gray-800 rounded-t-2xl p-4 w-full max-h-[50vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-bold text-white">Настройка цветов</h2>
+          <div className="bg-gray-800 rounded-t-xl p-3 w-full" style={{ maxHeight: '40vh' }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-white">Цвета</span>
               <button onClick={() => setShowColorPicker(false)}>
-                <X size={20} className="text-gray-400" />
+                <X size={18} className="text-gray-400" />
               </button>
             </div>
             
-            {/* Name Color Section */}
-            <div className="mb-3">
-              <label className="text-xs text-gray-300 block mb-1">Цвет имени</label>
-              
-              {/* Rainbow gradient indicator */}
-              <div className="h-2 rounded-full mb-2" style={{
-                background: 'linear-gradient(to right, #FF0000, #FF7F00, #FFFF00, #00FF00, #00FFFF, #0000FF, #8B00FF)'
-              }} />
-              
-              {/* Color presets - компактная сетка */}
-              <div className="grid grid-cols-10 gap-1 mb-2">
+            {/* Name Color */}
+            <div className="mb-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-gray-400">Имя:</span>
+                <div className="flex-1 h-1.5 rounded-full" style={{
+                  background: 'linear-gradient(to right, #FF0000, #FF7F00, #FFFF00, #00FF00, #00FFFF, #0000FF, #8B00FF)'
+                }} />
+              </div>
+              <div className="flex gap-1">
                 {rainbowColors.map((c) => (
                   <button
                     key={c.color}
                     onClick={() => setTempNameColor(c.color)}
-                    className="w-full aspect-square rounded border-2 transition-all"
+                    className="w-6 h-6 rounded border-2"
                     style={{ 
                       backgroundColor: c.color,
                       borderColor: tempNameColor === c.color ? '#fff' : 'transparent'
                     }}
-                    title={c.name}
                   />
                 ))}
-              </div>
-              
-              {/* Hex input with color picker */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tempNameColor}
-                  onChange={(e) => setTempNameColor(e.target.value)}
-                  className="flex-1 bg-gray-700 text-white px-2 py-1 rounded text-xs font-mono"
-                  placeholder="#FFFFFF"
-                />
                 <input
                   type="color"
                   value={tempNameColor}
                   onChange={(e) => setTempNameColor(e.target.value)}
-                  className="w-8 h-7 rounded cursor-pointer"
+                  className="w-6 h-6 rounded cursor-pointer"
                 />
               </div>
             </div>
             
-            {/* Message Background Section */}
-            <div className="mb-3">
-              <label className="text-xs text-gray-300 block mb-1">Фон сообщений</label>
-              
-              {/* Color presets - компактная сетка */}
-              <div className="grid grid-cols-10 gap-1 mb-2">
+            {/* Message Background */}
+            <div className="mb-2">
+              <span className="text-xs text-gray-400 block mb-1">Фон:</span>
+              <div className="flex gap-1">
                 {bgColors.map((c) => (
                   <button
                     key={c.color}
                     onClick={() => setTempMsgBgColor(c.color)}
-                    className="w-full aspect-square rounded border-2 transition-all"
+                    className="w-6 h-6 rounded border-2"
                     style={{ 
                       backgroundColor: c.color,
                       borderColor: tempMsgBgColor === c.color ? '#fff' : 'transparent'
                     }}
-                    title={c.name}
                   />
                 ))}
-              </div>
-              
-              {/* Hex input with color picker */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tempMsgBgColor}
-                  onChange={(e) => setTempMsgBgColor(e.target.value)}
-                  className="flex-1 bg-gray-700 text-white px-2 py-1 rounded text-xs font-mono"
-                  placeholder="#003a21"
-                />
                 <input
                   type="color"
                   value={tempMsgBgColor}
                   onChange={(e) => setTempMsgBgColor(e.target.value)}
-                  className="w-8 h-7 rounded cursor-pointer"
+                  className="w-6 h-6 rounded cursor-pointer"
                 />
               </div>
             </div>
             
-            {/* Preview */}
-            <div 
-              className="p-2 rounded text-sm mb-3"
-              style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}
-            >
-              <div style={{ color: tempNameColor }} className="text-xs font-medium mb-1">{displayName}</div>
-              <div className="text-white text-xs">Пример сообщения</div>
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowColorPicker(false)}
-                className="flex-1 px-3 py-2 bg-gray-700 text-white rounded text-sm"
+            {/* Preview + Apply */}
+            <div className="flex gap-2 items-center">
+              <div 
+                className="flex-1 p-1.5 rounded text-xs"
+                style={{ backgroundColor: hexToRgba(tempMsgBgColor, 0.8) }}
               >
-                Отмена
-              </button>
+                <span style={{ color: tempNameColor }} className="font-medium">{displayName}: </span>
+                <span className="text-white">Пример</span>
+              </div>
               <button
                 onClick={applyColors}
-                className="flex-1 px-3 py-2 rounded text-sm font-medium text-white"
+                className="px-4 py-1.5 rounded text-sm font-medium text-white"
                 style={{ backgroundColor: settings.iconColor }}
               >
-                Применить
+                OK
               </button>
             </div>
           </div>
