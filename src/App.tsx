@@ -166,20 +166,20 @@ const markViewCounted = (): void => {
     if (saved) {
       setDisplayName(saved)
       setIsLoggedInUser(true)
-      // Load saved colors for logged in user
-      const savedColors = localStorage.getItem('chatUserColors')
-      if (savedColors) {
-        try {
-          const colors = JSON.parse(savedColors)
-          setUserColors(colors)
-          setTempNameColor(colors.nameColor)
-          setTempMsgBgColor(colors.messageBackground)
-        } catch (e) {
-          // If parsing fails, use defaults
-        }
-      }
     } else {
       setIsLoggedInUser(false)
+    }
+    // Load colors for ALL users (including guests)
+    const savedColors = localStorage.getItem('chatUserColors')
+    if (savedColors) {
+      try {
+        const colors = JSON.parse(savedColors)
+        setUserColors(colors)
+        setTempNameColor(colors.nameColor)
+        setTempMsgBgColor(colors.messageBackground)
+      } catch (e) {
+        // If parsing fails, use defaults
+      }
     }
   }, [])
 
@@ -321,16 +321,12 @@ useEffect(() => {
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
       setIsLoggedInUser(true)
-      // Show color picker for logged in user
+      // Show color picker after login
       setShowColorPicker(true)
     } else {
-      // Reset to guest - clear all custom colors
+      // Switch to guest - keep colors (they can still customize)
       setDisplayName('гость')
       localStorage.removeItem('chatUsername')
-      localStorage.removeItem('chatUserColors')
-      setUserColors({ nameColor: '#ebef00', messageBackground: '#003a21' })
-      setTempNameColor('#ebef00')
-      setTempMsgBgColor('#003a21')
       setIsLoggedInUser(false)
     }
   }
@@ -338,6 +334,7 @@ useEffect(() => {
   // Apply selected colors
   const applyColors = () => {
     const colors = { nameColor: tempNameColor, messageBackground: tempMsgBgColor }
+    console.log('[v0] Applying colors:', colors)
     setUserColors(colors)
     localStorage.setItem('chatUserColors', JSON.stringify(colors))
     setShowColorPicker(false)
@@ -443,8 +440,8 @@ useEffect(() => {
   fileUrl: uploadData.fileUrl,
   fileType: uploadData.fileType,
   fileName: uploadData.fileName,
-  nameColor: isLoggedInUser ? userColors.nameColor : null,
-  messageBackground: isLoggedInUser ? userColors.messageBackground : null
+  nameColor: userColors.nameColor,
+  messageBackground: userColors.messageBackground
   }
 
       await fetch(`${API_URL}/messages`, {
@@ -493,9 +490,10 @@ setShowFilePreview(false)
         text,
         timestamp: Date.now(),
         replyTo: replyingTo?.id || null,
-        nameColor: isLoggedInUser ? userColors.nameColor : null,
-        messageBackground: isLoggedInUser ? userColors.messageBackground : null
+        nameColor: userColors.nameColor,
+        messageBackground: userColors.messageBackground
       }
+      console.log('[v0] Sending message with colors:', { nameColor: userColors.nameColor, messageBackground: userColors.messageBackground })
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -1115,17 +1113,13 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <span className="text-white">👤 {onlineCount}</span>
             <span className="text-white">👁 {viewCount}</span>
           </div>
-          {isLoggedInUser ? (
-                <button 
-                  onClick={() => setShowColorPicker(true)}
-                  className="text-xs mt-0.5 font-medium underline decoration-dotted"
-                  style={{ color: userColors.nameColor }}
-                >
-                  {displayName}
-                </button>
-              ) : (
-                <div className="text-xs mt-0.5 font-medium" style={{ color: '#9ca3af' }}>{displayName}</div>
-              )}
+<button
+  onClick={() => setShowColorPicker(true)}
+  className="text-xs mt-0.5 font-medium underline decoration-dotted"
+  style={{ color: userColors.nameColor }}
+  >
+  {displayName}
+  </button>
         </div>
         <button onClick={() => setShowInfo(true)} className="p-1">
           <Info size={20} style={{ color: settings.iconColor }} />
@@ -1148,29 +1142,25 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
         />
 {isLoggedInUser ? (
-            <button
-              onClick={() => {
-                setDisplayName('гость')
-                localStorage.removeItem('chatUsername')
-                localStorage.removeItem('chatUserColors')
-                setUserColors({ nameColor: '#ebef00', messageBackground: '#003a21' })
-                setTempNameColor('#ebef00')
-                setTempMsgBgColor('#003a21')
-                setIsLoggedInUser(false)
-              }}
-              className="px-4 py-2 rounded text-sm font-medium text-white bg-red-600"
-            >
-              Выйти
-            </button>
-          ) : (
-            <button
-              onClick={handleLogin}
-              className="px-4 py-2 rounded text-sm font-medium text-white"
-              style={{ backgroundColor: settings.iconColor }}
-            >
-              Войти
-            </button>
-          )}
+  <button
+  onClick={() => {
+  setDisplayName('гость')
+  localStorage.removeItem('chatUsername')
+  setIsLoggedInUser(false)
+  }}
+  className="px-4 py-2 rounded text-sm font-medium text-white bg-red-600"
+  >
+  Выйти
+  </button>
+  ) : (
+  <button
+  onClick={handleLogin}
+  className="px-4 py-2 rounded text-sm font-medium text-white"
+  style={{ backgroundColor: settings.iconColor }}
+  >
+  Войти
+  </button>
+  )}
         </div>
 
     {/* Messages */}
