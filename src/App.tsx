@@ -21,12 +21,6 @@ interface Settings {
   panelOpacity: number
 }
 
-interface Participant {
-  username: string
-  lastSeen: number
-  isOnline: boolean
-}
-
 // Spoiler component
 function SpoilerBlock({ title, content, fileUrl, fileType, fileName }: { 
   title: string
@@ -111,8 +105,6 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
-  const [showParticipants, setShowParticipants] = useState(false)
-  const [participants, setParticipants] = useState<Participant[]>([])
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -224,11 +216,6 @@ const updatePresence = async () => {
     if (data.success) {
       setOnlineCount(data.onlineCount)
       setViewCount(data.views)
-      
-      // Обновляем список участников если он есть в ответе
-      if (data.participants) {
-        setParticipants(data.participants)
-      }
 
       hasVisited.current = true
       try { localStorage.setItem('chatHasVisited', 'true') } catch (e) {}
@@ -301,15 +288,18 @@ useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Handle username login
+  // Handle username login/logout
   const handleLogin = () => {
-    if (username.trim()) {
+    if (displayName !== 'гость') {
+      // Выход - если уже залогинен
+      setDisplayName('гость')
+      localStorage.removeItem('chatUsername')
+      setUsername('')
+    } else if (username.trim()) {
+      // Вход - если есть имя в поле ввода
       setDisplayName(username.trim())
       localStorage.setItem('chatUsername', username.trim())
       setUsername('')
-    } else {
-      setDisplayName('гость')
-      localStorage.removeItem('chatUsername')
     }
   }
 
@@ -1043,41 +1033,35 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 
       {/* Header */}
       <div 
-        className="relative z-10 px-3 py-2 flex items-center gap-3"
+        className="relative z-10 px-3 py-2 flex items-center justify-between"
         style={{ 
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        <button 
-          onClick={() => setShowParticipants(true)} 
-          className="p-1 hover:bg-white/10 rounded"
-        >
-          <MessageCircle size={24} style={{ color: settings.iconColor }} />
-        </button>
+        {/* Левая часть: имя пользователя и иконка сообщения */}
+        <div className="flex items-center gap-2">
+          <span className="text-white text-sm">Вы: {displayName}</span>
+          <MessageCircle size={20} style={{ color: settings.iconColor }} />
+        </div>
         
-        {/* Статусы в центре */}
-        <div className="flex-1 flex justify-center">
+        {/* Правая часть: статусы и инфо */}
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-1">
-                <User size={14} className="text-white" />
-                <span className="text-white text-sm font-medium">{onlineCount}</span>
+                <User size={12} className="text-white" />
+                <span className="text-white text-xs font-medium">{onlineCount}</span>
               </div>
-              <span className="text-gray-400 text-xs">онлайн</span>
+              <span className="text-gray-400" style={{ fontSize: '9px' }}>онлайн</span>
             </div>
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-1">
-                <Eye size={14} className="text-white" />
-                <span className="text-white text-sm font-medium">{viewCount}</span>
+                <Eye size={12} className="text-white" />
+                <span className="text-white text-xs font-medium">{viewCount}</span>
               </div>
-              <span className="text-gray-400 text-xs">просмотров</span>
+              <span className="text-gray-400" style={{ fontSize: '9px' }}>просмотров</span>
             </div>
           </div>
-        </div>
-        
-        {/* Имя пользователя справа */}
-        <div className="flex items-center gap-2">
-          <span className="text-white text-sm">Вы: {displayName}</span>
           <button onClick={() => setShowInfo(true)} className="p-1">
             <Info size={20} style={{ color: settings.iconColor }} />
           </button>
@@ -1091,20 +1075,24 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-        <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-          placeholder="Введите имя..."
-          className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
-        />
+        {displayName === 'гость' && (
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+            placeholder="Введите имя..."
+            className="flex-1 bg-white/10 text-white px-3 py-2 rounded text-sm outline-none placeholder-gray-400"
+          />
+        )}
         <button
           onClick={handleLogin}
-          className="px-4 py-2 rounded text-sm font-medium text-white"
-          style={{ backgroundColor: settings.iconColor }}
+          className="px-4 py-2 rounded text-sm font-medium text-white transition-colors"
+          style={{ 
+            backgroundColor: displayName !== 'гость' ? '#ef4444' : settings.iconColor 
+          }}
         >
-          Войти
+          {displayName !== 'гость' ? 'Выйти' : 'Войти'}
         </button>
       </div>
 
@@ -1508,74 +1496,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         </div>
       )}
 
-      {/* Participants Drawer */}
-      {showParticipants && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black/50"
-            onClick={() => setShowParticipants(false)}
-          />
-          <div 
-            className="fixed left-0 top-0 bottom-0 z-50 w-72 bg-gray-900 shadow-lg flex flex-col"
-            style={{ animation: 'slideIn 0.2s ease-out' }}
-          >
-            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-700">
-              <h2 className="text-white font-medium">Участники чата</h2>
-              <button onClick={() => setShowParticipants(false)} className="p-1">
-                <X size={20} className="text-gray-400" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {participants.length === 0 ? (
-                <div className="p-4 text-gray-400 text-sm text-center">
-                  Нет данных об участниках
-                </div>
-              ) : (
-                participants.map((participant, idx) => (
-                  <div 
-                    key={idx} 
-                    className="px-4 py-3 flex items-center gap-3 border-b border-gray-800 hover:bg-gray-800/50"
-                  >
-                    {/* Индикатор статуса */}
-                    <div className="relative">
-                      <div 
-                        className={`w-3 h-3 rounded-full ${
-                          participant.isOnline 
-                            ? 'bg-green-500' 
-                            : 'bg-red-500'
-                        }`}
-                        style={participant.isOnline ? {
-                          animation: 'pulse 1.5s ease-in-out infinite',
-                          boxShadow: '0 0 8px #22c55e'
-                        } : {}}
-                      />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium truncate">
-                        {participant.username}
-                      </div>
-                      <div className="text-gray-400 text-xs">
-                        {participant.isOnline ? (
-                          'сейчас онлайн'
-                        ) : (
-                          `был(а): ${new Date(participant.lastSeen).toLocaleString('ru-RU', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}`
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Click outside to close context menu */}
       {showContextMenu && (
         <div
@@ -1584,26 +1504,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         />
       )}
 
-      <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(-100%);
-          }
-          to {
-            transform: translateX(0);
-          }
-        }
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.7;
-            transform: scale(1.2);
-          }
-        }
-      `}</style>
-    </div>
+      </div>
   )
 }
