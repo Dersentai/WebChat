@@ -12,7 +12,8 @@ interface Message {
   fileType?: string | null
   fileName?: string | null
   edited?: boolean
-  }
+  usernameColor?: string | null
+}
 
 interface Settings {
   backgroundImage: string | null
@@ -382,15 +383,16 @@ useEffect(() => {
 
 // Send message
   const message: Message = {
-  id: Date.now().toString(),
-  username: displayName,
-  text: inputText.trim(),
-  timestamp: Date.now(),
-  replyTo: replyingTo?.id || null,
-  fileUrl: uploadData.fileUrl,
-  fileType: uploadData.fileType,
-  fileName: uploadData.fileName
-  }
+      id: Date.now().toString(),
+      username: displayName,
+      text: inputText.trim(),
+      timestamp: Date.now(),
+      replyTo: replyingTo?.id || null,
+      fileUrl: uploadData.fileUrl,
+      fileType: uploadData.fileType,
+      fileName: uploadData.fileName,
+      usernameColor: usernameColor
+    }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -432,13 +434,14 @@ setShowFilePreview(false)
     }
 
     try {
-      const message: Message = {
-        id: Date.now().toString(),
-        username: displayName,
-        text,
-        timestamp: Date.now(),
-        replyTo: replyingTo?.id || null
-      }
+const message: Message = {
+      id: Date.now().toString(),
+      username: displayName,
+      text,
+      timestamp: Date.now(),
+      replyTo: replyingTo?.id || null,
+      usernameColor: usernameColor
+    }
 
       await fetch(`${API_URL}/messages`, {
         method: 'POST',
@@ -1055,7 +1058,10 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 {/* Левая часть: иконка сообщения и имя пользователя */}
         <div className="flex items-center gap-2">
           <MessageCircle size={20} style={{ color: settings.iconColor }} />
-          <span className="text-white text-sm">Вы: {displayName}</span>
+          <span className="text-sm">
+            <span className="text-white">Вы: </span>
+            <span style={{ color: usernameColor }}>{displayName}</span>
+          </span>
         </div>
         
         {/* Правая часть: статусы и инфо */}
@@ -1153,7 +1159,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             boxShadow: isSelected ? '0 0 0 4px rgba(255,80,80,0.06)' : undefined
           }}
         >
-<div className="text-xs font-medium mb-1" style={{ color: msg.username === displayName ? usernameColor : '#ebef00' }}>
+<div className="text-xs font-medium mb-1" style={{ color: msg.usernameColor || '#ebef00' }}>
                     {msg.username}
                   </div>
 

@@ -40,7 +40,7 @@ app.get('/make-server-98c5d13a/messages', async (c) => {
 app.post('/make-server-98c5d13a/messages', async (c) => {
   try {
     const body = await c.req.json()
-    const { id, username, text, timestamp, replyTo, fileUrl, fileType, fileName } = body
+    const { id, username, text, timestamp, replyTo, fileUrl, fileType, fileName, usernameColor } = body
     
     const message = {
       id,
@@ -50,7 +50,8 @@ app.post('/make-server-98c5d13a/messages', async (c) => {
       replyTo: replyTo || null,
       fileUrl: fileUrl || null,
       fileType: fileType || null,
-      fileName: fileName || null
+      fileName: fileName || null,
+      usernameColor: usernameColor || null
     }
     
     await kv.set(`msg_${id}`, message)
