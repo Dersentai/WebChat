@@ -257,4 +257,51 @@ app.post('/make-server-98c5d13a/upload-background', async (c) => {
   }
 })
 
+// Record a message view (one per user per message)
+app.post('/make-server-98c5d13a/message-view', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { messageId, userId } = body
+
+    if (!messageId || !userId) {
+      return c.json({ success: false, error: 'Missing messageId or userId' }, 400)
+    }
+
+    const viewData = await kv.get(`views_${messageId}`) || { viewers: [] }
+
+    if (!viewData.viewers.includes(userId)) {
+      viewData.viewers.push(userId)
+      await kv.set(`views_${messageId}`, viewData)
+    }
+
+    return c.json({ success: true, count: viewData.viewers.length })
+  } catch (error) {
+    console.log('Error recording message view:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
+// Get all message view counts
+app.get('/make-server-98c5d13a/message-views', async (c) => {
+  try {
+    const { data, error } = await supabase
+      .from('kv_store_98c5d13a')
+      .select('key, value')
+      .like('key', 'views_%')
+
+    if (error) throw new Error(error.message)
+
+    const views: Record<string, number> = {}
+    for (const item of (data || [])) {
+      const msgId = item.key.replace('views_', '')
+      views[msgId] = (item.value?.viewers || []).length
+    }
+
+    return c.json({ success: true, views })
+  } catch (error) {
+    console.log('Error fetching message views:', error)
+    return c.json({ success: false, error: String(error) }, 500)
+  }
+})
+
 Deno.serve(app.fetch)

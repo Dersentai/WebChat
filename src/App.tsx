@@ -106,11 +106,13 @@ export default function App() {
   const [themeOpacity, setThemeOpacity] = useState(0.85)
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
+  const [messageViews, setMessageViews] = useState<Record<string, number>>({})
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
+  const longPressTriggered = useRef(false)
   // Persist userId across page reloads so one browser == one unique id
 // Persist userId across page reloads so one browser == one unique id
 const userId = useRef<string>(
@@ -190,6 +192,52 @@ const markViewCounted = (): void => {
     }
   }
 
+  // Helper: does this message contain a file or a link?
+  const messageHasFileOrLink = (msg: Message): boolean => {
+    if (msg.fileUrl) return true
+    if (!msg.text) return false
+    // URL in quotes
+    if (msg.text.match(/["']((https?:\/\/[^"']+))["']/i)) return true
+    // Direct URL
+    if (msg.text.match(/^(https?:\/\/[^\s]+)$/i)) return true
+    return false
+  }
+
+  // Fetch message views
+  const fetchMessageViews = async () => {
+    try {
+      const res = await fetch(`${API_URL}/message-views`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMessageViews(data.views)
+      }
+    } catch (error) {
+      console.error('Error fetching message views:', error)
+    }
+  }
+
+  // Record a view for a message
+  const recordMessageView = async (messageId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/message-view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`
+        },
+        body: JSON.stringify({ messageId, userId: userId.current })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMessageViews(prev => ({ ...prev, [messageId]: data.count }))
+      }
+    } catch (error) {
+      console.error('Error recording message view:', error)
+    }
+  }
+
   // Update presence and fetch stats
 const updatePresence = async () => {
   try {
@@ -233,16 +281,18 @@ const updatePresence = async () => {
 useEffect(() => {
   fetchMessages()
   fetchSettings()
+  fetchMessageViews()
 
   if (!presenceInitialized.current) {
     updatePresence()
     presenceInitialized.current = true
   }
 
-  // Poll for updates every 5 seconds
+  // Poll for updates every 10 seconds
   const interval = setInterval(() => {
     fetchMessages()
     updatePresence()
+    fetchMessageViews()
   }, 10000)
 
   return () => clearInterval(interval)
@@ -448,6 +498,7 @@ setInputText('')
   // Handle long press
   const handleLongPress = (messageId: string, e: React.TouchEvent | React.MouseEvent) => {
     e.preventDefault()
+    longPressTriggered.current = true
     const rect = (e.target as HTMLElement).getBoundingClientRect()
     setSelectedMessage(messageId)
     setContextMenuPosition({ x: rect.left, y: rect.top - 60 })
@@ -455,6 +506,7 @@ setInputText('')
   }
 
   const handleMouseDown = (messageId: string, e: React.MouseEvent) => {
+    longPressTriggered.current = false
     longPressTimer.current = setTimeout(() => {
       handleLongPress(messageId, e)
     }, 500)
@@ -769,7 +821,7 @@ const hexToRgba = (hex: string | undefined | null, alpha = 0.7) => {
         )
       }
       
-     // Direct video files - расширенный список всех видео форматов
+     // Direct video files - расширенный список всех видео фо��матов
 // Добавил поддержку .m3u8 (HLS). Для .m3u8 указываем тип application/vnd.apple.mpegurl
 if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|mts|m3u8|mxf)(\?.*)?$/i)) {
   const isHls = url.match(/\.m3u8(\?.*)?$/i)
@@ -1377,7 +1429,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             </div>
             <div className="text-gray-300 space-y-2 text-sm">
               <p>🌐 Онлайн чат без регистрации.</p>
-              <p>👤Для участия можно использовать любое имя, либо оставаться "Гостем". Для сброса имени просто нажмите кнопку "выйти".</p>
+              <p>👤Для участия можно использовать любое имя, либо оставаться "Гостем". Для сброса им��ни просто нажмите кнопку "выйти".</p>
               <p>💬 Для ответа на сообщение нажмите и удерживайте на него.</p>
               <p>Доступна отправка файлов в чат. Для отправки кликабельной ссылки на файл/информацию - введите ссылку в кавычках.</p>
               <p>🔆🔆🔆</p>
