@@ -107,7 +107,11 @@ export default function App() {
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
   
+  const [messageViews, setMessageViews] = useState<Record<string, number>>({})
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
@@ -190,6 +194,55 @@ const markViewCounted = (): void => {
     }
   }
 
+  // Fetch message view counts
+  const fetchMessageViews = async () => {
+    try {
+      const res = await fetch(`${API_URL}/message-views`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMessageViews(data.views)
+      }
+    } catch (error) {
+      console.error('Error fetching message views:', error)
+    }
+  }
+
+  // Record a view for a message (one per user)
+  const recordMessageView = async (messageId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/message-view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${publicAnonKey}`
+        },
+        body: JSON.stringify({
+          messageId,
+          visitorId: userId.current
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMessageViews(prev => ({ ...prev, [messageId]: data.count }))
+      }
+    } catch (error) {
+      console.error('Error recording message view:', error)
+    }
+  }
+
+  // Check if a message has a file or is a direct link
+  const messageHasFileOrLink = (msg: Message): boolean => {
+    if (msg.fileUrl) return true
+    if (!msg.text) return false
+    // Direct URL
+    if (/^(https?:\/\/[^\s]+)$/i.test(msg.text.trim())) return true
+    // URL in quotes
+    if (/["']((https?:\/\/[^"']+))["']/i.test(msg.text)) return true
+    return false
+  }
+
   // Update presence and fetch stats
 const updatePresence = async () => {
   try {
@@ -233,16 +286,18 @@ const updatePresence = async () => {
 useEffect(() => {
   fetchMessages()
   fetchSettings()
+  fetchMessageViews()
 
   if (!presenceInitialized.current) {
     updatePresence()
     presenceInitialized.current = true
   }
 
-  // Poll for updates every 5 seconds
+  // Poll for updates every 10 seconds
   const interval = setInterval(() => {
     fetchMessages()
     updatePresence()
+    fetchMessageViews()
   }, 10000)
 
   return () => clearInterval(interval)
@@ -284,9 +339,19 @@ useEffect(() => {
   }
 }, [])
 
-// Scroll to bottom
+// Track scroll position to decide auto-scroll
+  const handleScroll = () => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    const threshold = 150
+    isNearBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+  }
+
+  // Scroll to bottom only if user is near the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   // Handle username login/logout
@@ -1101,10 +1166,12 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       </div>
 
     {/* Messages */}
-      <div className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2">
+      <div ref={messagesContainerRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2">
        {messages.map((msg, idx) => {
   const isSelected = selectedForDelete.has(msg.id)
   const content = renderMessageContent(msg)
+  const hasFile = messageHasFileOrLink(msg)
+  const viewsCount = messageViews[msg.id] || 0
   return (
     <div
       key={msg.id}
@@ -1113,6 +1180,8 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         if (deleteMode) {
           e.stopPropagation()
           toggleSelectMessage(msg.id)
+        } else if (hasFile) {
+          recordMessageView(msg.id)
         }
       }}
       onMouseDown={(e) => handleMouseDown(msg.id, e)}
@@ -1151,15 +1220,23 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 
           {content ?? (msg.text ? <div className="break-words whitespace-pre-wrap">{msg.text}</div> : null)}
 
-          <div className="text-xs text-gray-400 mt-1">
-            {new Date(msg.timestamp).toLocaleString('ru-RU', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-            {msg.edited && <span className="ml-1 italic">(ред.)</span>}
+          <div className="flex items-center justify-between mt-1 gap-3">
+            <div className="text-xs text-gray-400">
+              {new Date(msg.timestamp).toLocaleString('ru-RU', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+              {msg.edited && <span className="ml-1 italic">(ред.)</span>}
+            </div>
+            {hasFile && (
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <Eye size={12} />
+                <span>{viewsCount}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
