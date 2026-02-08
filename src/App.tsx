@@ -198,8 +198,10 @@ const markViewCounted = (): void => {
     if (!msg.text) return false
     // URL in quotes
     if (msg.text.match(/["']((https?:\/\/[^"']+))["']/i)) return true
-    // Direct URL
+    // Direct URL (entire message is a URL)
     if (msg.text.match(/^(https?:\/\/[^\s]+)$/i)) return true
+    // URL anywhere in text
+    if (msg.text.match(/https?:\/\/[^\s]+/i)) return true
     return false
   }
 
@@ -519,6 +521,7 @@ setInputText('')
   }
 
   const handleTouchStart = (messageId: string, e: React.TouchEvent) => {
+    longPressTriggered.current = false
     longPressTimer.current = setTimeout(() => {
       handleLongPress(messageId, e)
     }, 500)
@@ -1165,6 +1168,11 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
         if (deleteMode) {
           e.stopPropagation()
           toggleSelectMessage(msg.id)
+          return
+        }
+        if (longPressTriggered.current) return
+        if (messageHasFileOrLink(msg)) {
+          recordMessageView(msg.id)
         }
       }}
       onMouseDown={(e) => handleMouseDown(msg.id, e)}
@@ -1203,15 +1211,23 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
 
           {content ?? (msg.text ? <div className="break-words whitespace-pre-wrap">{msg.text}</div> : null)}
 
-          <div className="text-xs text-gray-400 mt-1">
-            {new Date(msg.timestamp).toLocaleString('ru-RU', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-            {msg.edited && <span className="ml-1 italic">(ред.)</span>}
+          <div className="flex items-center justify-between mt-1" style={{ gap: '8px' }}>
+            <div className="text-xs text-gray-400">
+              {new Date(msg.timestamp).toLocaleString('ru-RU', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+              {msg.edited && <span className="ml-1 italic">(ред.)</span>}
+            </div>
+            {messageHasFileOrLink(msg) && (
+              <div className="flex items-center text-xs text-gray-400" style={{ gap: '3px' }}>
+                <Eye size={12} />
+                <span>{messageViews[msg.id] || 0}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
