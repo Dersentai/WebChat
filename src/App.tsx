@@ -107,7 +107,7 @@ export default function App() {
   const [showToolbar, setShowToolbar] = useState(false)
   const [spoilerOpen, setSpoilerOpen] = useState(false)
   
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bgFileInputRef = useRef<HTMLInputElement>(null)
   const longPressTimer = useRef<NodeJS.Timeout | null>(null)
@@ -157,15 +157,90 @@ const markViewCounted = (): void => {
     }
   }, [])
 
-  // Fetch messages
+  // Запрос разрешения на уведомления при загрузке
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // Отслеживаем предыдущее количество сообщений для уведомлений
+  const prevMessageCount = useRef<number>(0)
+  const isFirstLoad = useRef<boolean>(true)
+
+  // Показать браузерное уведомление о новом сообщении
+  const showNotification = (msg: Message) => {
+    // Не показываем уведомления если вкладка активна
+    if (document.visibilityState === 'visible') return
+    if (!('Notification' in window)) return
+    if (Notification.permission !== 'granted') return
+
+    const title = `Новое сообщение от ${msg.username}`
+    const body = msg.text
+      ? msg.text.substring(0, 100) + (msg.text.length > 100 ? '...' : '')
+      : msg.fileUrl ? 'Отправлен файл' : 'Новое сообщение'
+
+    try {
+      const notification = new Notification(title, {
+        body,
+        icon: '/favicon.ico',
+        tag: 'webchat-new-message',
+      })
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
+      // Автозакрытие через 5 секунд
+      setTimeout(() => notification.close(), 5000)
+    } catch {
+      // Fallback: некоторые мобильные браузеры не поддерживают new Notification
+    }
+  }
+
+  // Fetch messages с сохранением позиции прокрутки
   const fetchMessages = async () => {
+    // Сохраняем позицию прокрутки до обновления
+    const container = messagesContainerRef.current
+    const scrollTop = container?.scrollTop ?? 0
+    const scrollHeight = container?.scrollHeight ?? 0
+
     try {
       const res = await fetch(`${API_URL}/messages`, {
         headers: { Authorization: `Bearer ${publicAnonKey}` }
       })
       const data = await res.json()
       if (data.success) {
-        setMessages(data.messages)
+        const newMessages: Message[] = data.messages
+
+        // Уведомления о новых сообщениях (только не при первой загрузке)
+        if (!isFirstLoad.current && newMessages.length > prevMessageCount.current) {
+          const newOnes = newMessages.slice(prevMessageCount.current)
+          for (const msg of newOnes) {
+            // Не уведомляем о своих собственных сообщениях
+            if (msg.username !== displayName) {
+              showNotification(msg)
+            }
+          }
+        }
+        isFirstLoad.current = false
+        prevMessageCount.current = newMessages.length
+
+        setMessages(newMessages)
+
+        // Восстанавливаем позицию прокрутки после рендера
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight
+            const wasAtBottom = scrollHeight - scrollTop - container.clientHeight < 50
+            if (wasAtBottom) {
+              // Если пользователь был внизу — оставляем внизу
+              container.scrollTop = newScrollHeight
+            } else {
+              // Иначе — сохраняем позицию с поправкой на новый контент сверху
+              container.scrollTop = scrollTop + (newScrollHeight - scrollHeight)
+            }
+          }
+        })
       }
     } catch (error) {
       console.error('Error fetching messages:', error)
@@ -390,7 +465,13 @@ setShowFilePreview(false)
   setInputText('')
   setReplyingTo(null)
   setSpoilerOpen(false)
-  fetchMessages()
+  await fetchMessages()
+  // Прокручиваем вниз после отправки своего сообщения
+  requestAnimationFrame(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  })
     } catch (error) {
       console.error('Error sending message with file:', error)
     }
@@ -436,7 +517,13 @@ const message: Message = {
 setInputText('')
   setReplyingTo(null)
   setSpoilerOpen(false)
-  fetchMessages()
+  await fetchMessages()
+  // Прокручиваем вниз после отправки своего сообщения
+  requestAnimationFrame(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  })
   } catch (error) {
       console.error('Error sending message:', error)
     }
@@ -1036,7 +1123,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
           backgroundColor: `${settings.panelColor}${Math.round(settings.panelOpacity * 255).toString(16).padStart(2, '0')}` 
         }}
       >
-{/* Левая часть: иконка сообщения и имя пользователя */}
+{/* Левая часть: иконка ��ообщения и имя пользователя */}
         <div className="flex items-center gap-2">
           <MessageCircle size={20} style={{ color: settings.iconColor }} />
           <span className="text-sm">
@@ -1098,7 +1185,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
       </div>
 
     {/* Messages */}
-      <div className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2">
+      <div ref={messagesContainerRef} className="relative flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ overflowAnchor: 'none' }}>
        {messages.map((msg, idx) => {
   const isSelected = selectedForDelete.has(msg.id)
   const content = renderMessageContent(msg)
@@ -1163,7 +1250,6 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
     </div>
   )
 })}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Context Menu */}
@@ -1375,7 +1461,7 @@ if (url.match(/\.(mp4|webm|ogg|ogv|mov|avi|mkv|flv|wmv|m4v|3gp|mpg|mpeg|ts|m2ts|
             <div className="text-gray-300 space-y-2 text-sm">
               <p>🌐 Онлайн чат без регистрации.</p>
               <p>👤Для участия можно использовать любое имя, либо оставаться "Гостем". Для сброса им��ни просто нажмите кнопку "выйти".</p>
-              <p>💬 Для ответа на сообщение нажмите и удерживайте на него.</p>
+              <p>💬 Для ответа на соо��щение нажмите и удерживайте на него.</p>
               <p>Доступна отправка файлов в чат. Для отправки кликабельной ссылки на файл/информацию - введите ссылку в кавычках.</p>
               <p>🔆🔆🔆</p>
             </div>
